@@ -140,10 +140,13 @@ input,select,textarea{font-family:inherit}
 .appt-time{font-size:12px;font-weight:700;color:var(--pri);white-space:nowrap}
 .appt-meta{font-size:12px;color:var(--ink-soft);margin-top:3px;display:flex;flex-wrap:wrap;gap:8px}
 .appt-meta span{display:flex;align-items:center;gap:4px}
-.appt-actions{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+.appt-actions{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
 .chip-btn{
+  display:flex;align-items:center;justify-content:center;gap:5px;
+  min-height:38px;width:100%;
   border:1px solid var(--line);background:var(--surface);
-  padding:6px 11px;border-radius:8px;font-size:11.5px;font-weight:700;color:var(--ink);
+  padding:8px 4px;border-radius:10px;font-size:12px;font-weight:700;color:var(--ink);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 }
 .chip-btn.pri{background:var(--pri-light);border-color:var(--pri-light);color:var(--pri-dark)}
 .chip-btn.good{background:var(--good-light);border-color:var(--good-light);color:var(--good)}
@@ -222,6 +225,16 @@ label{font-size:12px;font-weight:700;color:var(--ink-soft);display:block;margin-
 .suggest-item:active{background:var(--pri-light)}
 .suggest-item .nm{font-size:13.5px;font-weight:700}
 .suggest-item .ph{font-size:11.5px;color:var(--ink-soft);margin-top:2px}
+#doctor-suggest{left:auto;right:0;min-width:250px}
+.combo{position:relative}
+.combo input{padding-right:40px}
+.combo-arrow{
+  position:absolute;right:1px;top:1px;bottom:1px;width:38px;
+  border:none;background:transparent;color:var(--ink-soft);font-size:17px;
+  border-radius:0 9px 9px 0;
+}
+.combo-arrow:active{background:var(--pri-light)}
+.suggest-item .sp{font-weight:500;color:var(--ink-soft);font-size:11.5px;margin-left:6px}
 .suggest-hint{padding:8px 13px;font-size:11px;color:var(--ink-soft);background:var(--paper)}
 
 .helptext{font-size:11.5px;color:var(--ink-soft);margin-top:5px;line-height:1.5}
@@ -350,10 +363,13 @@ label{font-size:12px;font-weight:700;color:var(--ink-soft);display:block;margin-
           <input type="tel" id="f-phone" placeholder="98765 43210" oninput="onPatientFieldInput('f-phone')" autocomplete="off"/>
           <div id="phone-suggest" class="suggest-box"></div>
         </div>
-        <div class="field">
+        <div class="field" style="position:relative">
           <label>Doctor</label>
-          <input type="text" id="f-doctor" list="doctor-list" placeholder="Dr. ..."/>
-          <datalist id="doctor-list"></datalist>
+          <div class="combo">
+            <input type="text" id="f-doctor" placeholder="Dr. ..." autocomplete="off" oninput="showDoctorList(false)"/>
+            <button type="button" class="combo-arrow" onclick="toggleDoctorList()" aria-label="Show doctors">&#9662;</button>
+          </div>
+          <div id="doctor-suggest" class="suggest-box"></div>
         </div>
       </div>
       <div class="row2">
@@ -493,8 +509,8 @@ const DOCTORS_REMOTE_KEY = 'niva_appt_companion_remote_doctors';
 let remoteDoctors = [];
 try{ remoteDoctors = JSON.parse(localStorage.getItem(DOCTORS_REMOTE_KEY)||'[]'); }catch(e){}
 
-function refreshDoctorList(){
-  const dl=document.getElementById('doctor-list'); if(!dl) return;
+// Doctor names to offer: the main app's list first, then names typed here before.
+function doctorOptions(){
   const seen=new Set(), opts=[];
   remoteDoctors.forEach(d=>{
     const n=(d.name||'').trim();
@@ -504,7 +520,36 @@ function refreshDoctorList(){
     n=(n||'').trim();
     if(n && !seen.has(n.toLowerCase())){ seen.add(n.toLowerCase()); opts.push({n, spec:''}); }
   });
-  dl.innerHTML = opts.map(o=>'<option value="'+escapeHtml(o.n)+'"'+(o.spec?' label="'+escapeHtml(o.spec)+'"':'')+'></option>').join('');
+  return opts;
+}
+let _doctorShown=[];
+function showDoctorList(showAll){
+  const box=document.getElementById('doctor-suggest'); if(!box) return;
+  const q=(document.getElementById('f-doctor').value||'').trim().toLowerCase();
+  let opts=doctorOptions();
+  if(!showAll && q) opts=opts.filter(o=>o.n.toLowerCase().includes(q));
+  _doctorShown=opts;
+  if(!opts.length && !showAll){ box.classList.remove('show'); box.innerHTML=''; return; }
+  box.innerHTML = opts.map((o,i)=>
+    '<div class="suggest-item" onclick="pickDoctor('+i+')"><div class="nm">'+escapeHtml(o.n)
+    +(o.spec?'<span class="sp">'+escapeHtml(o.spec)+'</span>':'')+'</div></div>'
+  ).join('') + '<div class="suggest-hint">'+(opts.length?'Not listed? Just type the name.':'No doctors yet -- type a name to add one.')+'</div>';
+  box.classList.add('show');
+}
+function toggleDoctorList(){
+  const box=document.getElementById('doctor-suggest');
+  if(box.classList.contains('show')) box.classList.remove('show'); else showDoctorList(true);
+}
+function pickDoctor(i){
+  const o=_doctorShown[i]; if(!o) return;
+  document.getElementById('f-doctor').value=o.n;
+  document.getElementById('doctor-suggest').classList.remove('show');
+}
+// Kept as a hook for callers that refresh after new doctors arrive; the
+// dropdown reads the latest list each time it opens, so nothing to rebuild.
+function refreshDoctorList(){
+  const box=document.getElementById('doctor-suggest');
+  if(box && box.classList.contains('show')) showDoctorList(true);
 }
 function rememberDoctor(name){
   name=(name||'').trim(); if(!name) return;
@@ -653,6 +698,7 @@ function selectPatientSuggestion(id){
 document.addEventListener('click', function(e){
   if(!e.target.closest('#f-patient') && !e.target.closest('#patient-suggest')) document.getElementById('patient-suggest').classList.remove('show');
   if(!e.target.closest('#f-phone') && !e.target.closest('#phone-suggest')) document.getElementById('phone-suggest').classList.remove('show');
+  if(!e.target.closest('#f-doctor') && !e.target.closest('#doctor-suggest') && !e.target.closest('.combo-arrow')) document.getElementById('doctor-suggest').classList.remove('show');
 });
 
 /* ---------------- Clinic logo (pulled from the same Firebase node the main app saves it to) ---------------- */
@@ -809,6 +855,7 @@ function openApptForm(existing){
   applyNewApptDefaults();
   document.getElementById('patient-suggest').classList.remove('show');
   document.getElementById('phone-suggest').classList.remove('show');
+  document.getElementById('doctor-suggest').classList.remove('show');
   openModal('appt-modal');
 }
 

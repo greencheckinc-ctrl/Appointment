@@ -2,7 +2,7 @@
 // Caches the app shell so it opens instantly (even offline). It does NOT
 // cache Firebase API calls -- those always go to the network, so appointment
 // data is never served stale from here.
-const CACHE_NAME = 'niva-appointments-v4';
+const CACHE_NAME = 'niva-appointments-v7';
 const APP_SHELL = [
   './',
   './index.html',
