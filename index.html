@@ -496,7 +496,10 @@ label{font-size:12px;font-weight:700;color:var(--ink-soft);display:block;margin-
       </div>
       <div class="field">
         <label>Sign-in password</label>
-        <input type="text" id="s-password" placeholder="Password"/>
+        <div style="position:relative">
+          <input type="password" id="s-password" placeholder="Password" autocomplete="new-password" autocapitalize="off" spellcheck="false" style="padding-right:64px"/>
+          <button type="button" id="s-password-toggle" onclick="var p=document.getElementById('s-password');var h=p.type==='password';p.type=h?'text':'password';this.textContent=h?'Hide':'Show';" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);border:none;background:transparent;color:var(--pri,#0d5c6e);font-weight:700;font-size:13px;padding:6px 8px;cursor:pointer">Show</button>
+        </div>
       </div>
       <div id="settings-status"></div>
     </div>
@@ -1408,6 +1411,7 @@ function smartPasteClear(){
 
 /* ---------------- Settings ---------------- */
 function openSettings(){
+  try{ var _p=document.getElementById('s-password'); if(_p){ _p.type='password'; var _t=document.getElementById('s-password-toggle'); if(_t) _t.textContent='Show'; } }catch(e){}
   smartPasteClear();
   document.getElementById('s-clinicname').value=CFG.clinicName||'';
   document.getElementById('s-clinicaddr').value=CFG.clinicAddr||'';
