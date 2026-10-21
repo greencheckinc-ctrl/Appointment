@@ -2,8 +2,18 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"/>
 <title>Niva Appointments</title>
+
+<!-- PWA: installable app metadata + icons -->
+<link rel="manifest" href="manifest.json"/>
+<meta name="theme-color" content="#083e4b"/>
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png"/>
+<link rel="apple-touch-icon" href="apple-touch-icon.png"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="Appointments"/>
+<meta name="mobile-web-app-capable" content="yes"/>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -164,7 +174,7 @@ input,select,textarea{font-family:inherit}
 .searchbar{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
 .searchbar input[type=text]{flex:2;min-width:140px}
 .searchbar select{flex:1;min-width:100px}
-input[type=text],input[type=tel],input[type=password],input[type=date],input[type=time],select,textarea{
+input[type=text],input[type=tel],input[type=date],input[type=time],select,textarea{
   width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;
   font-size:14px;background:var(--surface);color:var(--ink);outline:none;
 }
@@ -224,13 +234,6 @@ label{font-size:12px;font-weight:700;color:var(--ink-soft);display:block;margin-
   border-radius:0 9px 9px 0;
 }
 .combo-arrow:active{background:var(--pri-light)}
-.combo .combo-text{
-  position:absolute;right:1px;top:1px;bottom:1px;width:58px;
-  border:none;background:transparent;color:var(--pri);
-  font-size:12px;font-weight:800;border-radius:0 9px 9px 0;
-}
-.combo .combo-text:active{background:var(--pri-light)}
-.combo:has(.combo-text) input{padding-right:64px}
 .suggest-item .sp{font-weight:500;color:var(--ink-soft);font-size:11.5px;margin-left:6px}
 .suggest-hint{padding:8px 13px;font-size:11px;color:var(--ink-soft);background:var(--paper)}
 
@@ -405,6 +408,36 @@ label{font-size:12px;font-weight:700;color:var(--ink-soft);display:block;margin-
   </div>
 </div>
 
+<!-- ============ COLLECT OPD MODAL ============ -->
+<div class="ov" id="opd-modal" onclick="if(event.target===this)closeModal('opd-modal')">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>Collect OPD</h3>
+      <button class="x-btn" onclick="closeModal('opd-modal')">&#10005;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="opd-id"/>
+      <div class="field">
+        <label>Patient</label>
+        <div id="opd-patient" style="font-weight:700;font-size:15px"></div>
+      </div>
+      <div class="field">
+        <label>OPD amount (&#8377;)</label>
+        <input type="number" inputmode="numeric" min="0" id="opd-amount" placeholder="300"/>
+        <div style="font-size:11.5px;color:#888;margin-top:5px">Default is &#8377;300. If you change it, the new amount is remembered for next time.</div>
+      </div>
+      <div class="field">
+        <label>Payment mode</label>
+        <select id="opd-mode"><option>Cash</option><option>UPI</option><option>Card</option></select>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn ghost" onclick="closeModal('opd-modal')">Cancel</button>
+      <button class="btn pri" onclick="saveOpd()">Collect OPD</button>
+    </div>
+  </div>
+</div>
+
 <!-- ============ SETTINGS MODAL ============ -->
 <div class="ov" id="settings-modal" onclick="if(event.target===this)closeModal('settings-modal')">
   <div class="modal">
@@ -463,10 +496,7 @@ label{font-size:12px;font-weight:700;color:var(--ink-soft);display:block;margin-
       </div>
       <div class="field">
         <label>Sign-in password</label>
-        <div class="combo">
-          <input type="password" id="s-password" placeholder="Password" autocomplete="current-password"/>
-          <button type="button" class="combo-text" id="s-password-toggle" onclick="togglePasswordVisibility()" aria-label="Show or hide password">Show</button>
-        </div>
+        <input type="text" id="s-password" placeholder="Password"/>
       </div>
       <div id="settings-status"></div>
     </div>
@@ -733,33 +763,62 @@ function pullLogo(){
 // source of truth and this app just mirrors it.
 function pullClinicInfo(){
   if(!isConfigured()) return;
-  fbGET('clinic_info/settings').then(res=>{
-    if(!res) return;
-    // Doctors list (array, or an object if Firebase stored it sparsely)
-    const rawDocs=res.doctors;
-    const docs=Array.isArray(rawDocs) ? rawDocs : (rawDocs && typeof rawDocs==='object' ? Object.values(rawDocs) : null);
-    if(docs){
-      const list=docs.filter(d=>d && d.name).map(d=>({name:String(d.name).trim(), spec:d.spec||''}));
-      if(list.length){
-        remoteDoctors=list;
-        try{ localStorage.setItem(DOCTORS_REMOTE_KEY, JSON.stringify(list)); }catch(e){}
-        refreshDoctorList();
+  // The main app may keep its settings at the shared path or under a
+  // per-device-type path (mobile / desktop), so try all of them and use
+  // the first one that actually contains clinic details.
+  const paths=['clinic_info/settings','clinic_info/mobile/settings','clinic_info/desktop/settings','clinic_info'];
+  Promise.all(paths.map(p=>fbGET(p).catch(()=>null))).then(results=>{
+    let res=null, c=null;
+    for(const r of results){
+      if(!r || typeof r!=='object') continue;
+      const cand = (r.clinic && typeof r.clinic==='object') ? r.clinic
+                 : (r.settings && r.settings.clinic && typeof r.settings.clinic==='object') ? r.settings.clinic
+                 : ((r.name||r.clinicName||r.clinic_name) ? r : null);
+      if(cand){ res=r.settings&&r.settings.clinic ? r.settings : r; c=cand; break; }
+    }
+    // Doctors list can come from any of the fetched nodes
+    for(const r of results){
+      if(!r || typeof r!=='object') continue;
+      const rawDocs=r.doctors || (r.settings&&r.settings.doctors);
+      const docs=Array.isArray(rawDocs) ? rawDocs : (rawDocs && typeof rawDocs==='object' ? Object.values(rawDocs) : null);
+      if(docs){
+        const list=docs.filter(d=>d && d.name).map(d=>({name:String(d.name).trim(), spec:d.spec||''}));
+        if(list.length){
+          remoteDoctors=list;
+          try{ localStorage.setItem(DOCTORS_REMOTE_KEY, JSON.stringify(list)); }catch(e){}
+          refreshDoctorList();
+          break;
+        }
       }
     }
-    const c=res.clinic;
-    if(!c) return;
+    if(!c){ console.warn('[NivaAppt] No clinic details found in Firebase. Tried:', paths, results); return; }
+    // Bill numbering config from the main app (used to create OPD bills with the right bill number)
+    try{
+      const bl=(res && res.billing) || (res && res.settings && res.settings.billing);
+      if(bl){
+        let bchg=false;
+        if(bl.prefix && bl.prefix!==CFG.billPrefix){ CFG.billPrefix=bl.prefix; bchg=true; }
+        if(bl.padDigits && bl.padDigits!==CFG.billPad){ CFG.billPad=bl.padDigits; bchg=true; }
+        if(bl.nextNum && bl.nextNum!==CFG.billNext){ CFG.billNext=bl.nextNum; bchg=true; }
+        if(bchg) saveCfg(CFG);
+      }
+    }catch(e){}
+    const pick=(...keys)=>{ for(const k of keys){ if(c[k]) return String(c[k]).trim(); } return ''; };
+    const name=pick('name','clinicName','clinic_name','title');
+    const addr=pick('addr','address','clinicAddr');
+    const phone=pick('phone','mobile','clinicPhone','contact');
+    const mapLink=pick('mapLink','maplink','locationLink','mapUrl','map');
+    const doctor=pick('doctor','doctorName');
     let changed=false;
-    if(c.name && c.name!==CFG.clinicName){ CFG.clinicName=c.name; changed=true; }
-    if(c.addr && c.addr!==CFG.clinicAddr){ CFG.clinicAddr=c.addr; changed=true; }
-    if(c.phone && c.phone!==CFG.clinicPhone){ CFG.clinicPhone=c.phone; changed=true; }
-    if(c.mapLink && c.mapLink!==CFG.clinicMapLink){ CFG.clinicMapLink=c.mapLink; changed=true; }
-    if(c.doctor && c.doctor!==CFG.clinicDoctor){ CFG.clinicDoctor=c.doctor; changed=true; }
+    if(name && name!==CFG.clinicName){ CFG.clinicName=name; changed=true; }
+    if(addr && addr!==CFG.clinicAddr){ CFG.clinicAddr=addr; changed=true; }
+    if(phone && phone!==CFG.clinicPhone){ CFG.clinicPhone=phone; changed=true; }
+    if(mapLink && mapLink!==CFG.clinicMapLink){ CFG.clinicMapLink=mapLink; changed=true; }
+    if(doctor && doctor!==CFG.clinicDoctor){ CFG.clinicDoctor=doctor; changed=true; }
     if(changed){
       saveCfg(CFG);
       applyClinicName();
-      // If a NEW appointment form is already open (first sync just landed), fill its empty fields now
       if(document.getElementById('appt-modal').classList.contains('show')) applyNewApptDefaults();
-      // Keep an already-open Settings form in sync too
       const nameEl=document.getElementById('s-clinicname');
       if(nameEl && document.getElementById('settings-modal').classList.contains('show')){
         nameEl.value=CFG.clinicName||'';
@@ -925,6 +984,7 @@ function pushWithRetry(appt){
 }
 function retryUnsyncedPushes(){
   if(!isConfigured()) return;
+  retryOpdBills();
   appointments.filter(a=>a._unsynced).forEach(pushWithRetry);
 }
 
@@ -1053,11 +1113,105 @@ function apptCardHtml(a){
     +'<div class="appt-actions">'
       +(a.status!=='Done'?'<button class="chip-btn good" onclick="setStatus(\''+a.id+'\',\'Done\')">&#10003; Done</button>':'')
       +(a.status!=='Cancelled'?'<button class="chip-btn bad" onclick="setStatus(\''+a.id+'\',\'Cancelled\')">Cancel</button>':'')
+      +(a.status!=='Cancelled'?(a.opdPaid?'<button class="chip-btn good" onclick="openOpd(\''+a.id+'\')">&#8377;'+a.opdAmount+' OPD &#10003;</button>':'<button class="chip-btn pri" onclick="openOpd(\''+a.id+'\')">&#8377; Collect OPD</button>'):'')
       +(a.phone?'<button class="chip-btn pri" onclick="window.open(waLink(appointments.find(x=>x.id===\''+a.id+'\')),\'_blank\')">&#128241; WhatsApp</button>':'')
       +(a.phone?'<button class="chip-btn pri" onclick="window.location.href=smsLink(appointments.find(x=>x.id===\''+a.id+'\'))">&#128172; SMS</button>':'')
       +'<button class="chip-btn" onclick="editAppt(\''+a.id+'\')">Edit</button>'
       +'<button class="chip-btn" onclick="deleteAppt(\''+a.id+'\')">Delete</button>'
     +'</div></div>';
+}
+
+/* ---------------- OPD collection ----------------
+   Default fee is 300; whatever amount is collected becomes the new default.
+   Collecting OPD creates a PAID consultation bill in the main app's "bills"
+   node (consult = amount, no treatments), so it shows in the main app's
+   Consultation / OPD column and in its OPD / Treatment Income report.
+   Collecting again for the same appointment updates that same bill. */
+const OPD_DEFAULT_KEY='niva_appt_companion_opd_default';
+const OPD_MODE_KEY='niva_appt_companion_opd_mode';
+function getOpdDefault(){ const v=parseInt(localStorage.getItem(OPD_DEFAULT_KEY)||''); return v>=0 ? v : 300; }
+function openOpd(id){
+  const a=appointments.find(x=>x.id===id); if(!a) return;
+  document.getElementById('opd-id').value=id;
+  document.getElementById('opd-patient').textContent=a.patient||'';
+  document.getElementById('opd-amount').value = a.opdPaid ? a.opdAmount : getOpdDefault();
+  document.getElementById('opd-mode').value = a.opdMode || localStorage.getItem(OPD_MODE_KEY) || 'Cash';
+  openModal('opd-modal');
+  setTimeout(()=>{ const el=document.getElementById('opd-amount'); el.focus(); el.select(); },150);
+}
+
+function fbShallowKeys(path){
+  return fbSignIn().then(()=>{
+    let u=fbUrl(path); u+=(u.indexOf('?')>-1?'&':'?')+'shallow=true';
+    return fetch(u).then(r=>{ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); });
+  });
+}
+// Next bill number, same scheme as the main app: PREFIX-001, PREFIX-002 ...
+function nextBillId(){
+  const px=(CFG.billPrefix||'RCP'), pad=parseInt(CFG.billPad||3)||3, prefix=px+'-';
+  return fbShallowKeys('bills').then(obj=>{
+    let maxN=0;
+    Object.keys(obj||{}).forEach(k=>{ if(k.indexOf(prefix)===0){ const n=parseInt(k.slice(prefix.length)); if(!isNaN(n)&&n>maxN) maxN=n; } });
+    const n=Math.max(maxN+1, parseInt(CFG.billNext||0)||0, 1);
+    return px+'-'+String(n).padStart(pad,'0');
+  });
+}
+function buildOpdBill(a, id, existing){
+  const amt=a.opdAmount, now=Date.now();
+  const b=Object.assign({}, existing||{}, {
+    id, date:(existing&&existing.date)||todayStr(), patient:a.patient||'', age:(existing&&existing.age)||'',
+    phone:a.phone||'', doctor:a.doctor||'', diag:(existing&&existing.diag)||'',
+    additionalDetail:(existing&&existing.additionalDetail)||'',
+    consult:amt, items:(existing&&existing.items)||[], sub:amt, disc:0, discLabel:'\u20B90', discType:'amt', discVal:0,
+    total:amt, payType:'Full', paidNow:amt, balance:0, dueDate:'',
+    mode:a.opdMode||'Cash', status:'Paid', manualPaid:true, upiTxn:'', payRef:'',
+    dentalChart:(existing&&existing.dentalChart)||{},
+    createdAt:(existing&&existing.createdAt)||now, updatedAt:now,
+    version:(existing&&typeof existing.version==='number'?existing.version:0)+1,
+    updatedBy:'Niva Appointments app', deviceId:deviceId()
+  });
+  return b;
+}
+const _opdBusy={};
+// Creates (or updates) the consultation bill in Firebase for this appointment.
+function syncOpdBill(a){
+  if(!a || !a.opdPaid || _opdBusy[a.id]) return Promise.resolve();
+  if(!isConfigured()){ return Promise.resolve(); }
+  _opdBusy[a.id]=true;
+  const finish=(billId)=>{
+    const x=appointments.find(z=>z.id===a.id);
+    if(x){ x.opdBillId=billId; delete x.opdBillPending; x.updatedAt=Date.now(); x.version=(x.version||0)+1; x._unsynced=true; persistCache(); renderActiveView(); pushWithRetry(x); }
+  };
+  const create=()=>nextBillId().then(id=>fbPUT('bills/'+fbSafeKey(id), buildOpdBill(a,id,null)).then(()=>finish(id)));
+  let p;
+  if(a.opdBillId){
+    p=fbGET('bills/'+fbSafeKey(a.opdBillId)).then(ex=>{
+      if(ex && ex.id) return fbPUT('bills/'+fbSafeKey(a.opdBillId), buildOpdBill(a,ex.id,ex)).then(()=>finish(ex.id));
+      return create(); // bill was deleted in the main app -> make a fresh one
+    });
+  } else p=create();
+  return p.then(()=>{ toast('OPD added to main app'); })
+    .catch(err=>{ console.warn('[NivaAppt] OPD bill sync failed:', err.message); toast('OPD saved here -- will retry sending to main app'); })
+    .then(()=>{ delete _opdBusy[a.id]; });
+}
+function retryOpdBills(){
+  appointments.filter(a=>a.opdPaid && a.opdBillPending).forEach(syncOpdBill);
+}
+
+function saveOpd(){
+  const id=document.getElementById('opd-id').value;
+  const a=appointments.find(x=>x.id===id); if(!a) return;
+  const amt=parseInt(document.getElementById('opd-amount').value);
+  if(isNaN(amt) || amt<0){ toast('Enter a valid amount'); return; }
+  const mode=document.getElementById('opd-mode').value||'Cash';
+  try{ localStorage.setItem(OPD_DEFAULT_KEY, String(amt)); localStorage.setItem(OPD_MODE_KEY, mode); }catch(e){}
+  a.opdPaid=true; a.opdAmount=amt; a.opdMode=mode; a.opdDate=todayStr(); a.opdCollectedAt=Date.now(); a.opdBillPending=true;
+  a.updatedAt=Date.now(); a.version=(a.version||0)+1; a.updatedBy='Niva Appointments app'; a.deviceId=deviceId();
+  a._unsynced=true;
+  persistCache(); closeModal('opd-modal'); renderActiveView();
+  toast('OPD \u20B9'+amt+' collected');
+  pushWithRetry(a);
+  syncOpdBill(a);
 }
 
 function emptyHtml(msg){
@@ -1253,19 +1407,8 @@ function smartPasteClear(){
 }
 
 /* ---------------- Settings ---------------- */
-function setPasswordVisible(visible){
-  const el=document.getElementById('s-password');
-  const btn=document.getElementById('s-password-toggle');
-  el.type = visible ? 'text' : 'password';
-  btn.textContent = visible ? 'Hide' : 'Show';
-}
-function togglePasswordVisibility(){
-  setPasswordVisible(document.getElementById('s-password').type==='password');
-}
-
 function openSettings(){
   smartPasteClear();
-  setPasswordVisible(false); // always start hidden, even if it was left showing last time
   document.getElementById('s-clinicname').value=CFG.clinicName||'';
   document.getElementById('s-clinicaddr').value=CFG.clinicAddr||'';
   document.getElementById('s-clinicphone').value=CFG.clinicPhone||'';
@@ -1341,6 +1484,16 @@ window.addEventListener('online', function(){
   if(isConfigured()) startPolling(); else setSyncPill('','Not connected');
   document.getElementById('f-date').value=todayStr();
 })();
+
+// Register service worker so the app installs as a proper PWA (home-screen
+// icon, standalone window, works offline for the app shell).
+if('serviceWorker' in navigator){
+  window.addEventListener('load', function(){
+    navigator.serviceWorker.register('service-worker.js').catch(function(err){
+      console.warn('[NivaAppt] service worker registration failed:', err.message);
+    });
+  });
+}
 </script>
 </body>
 </html>
