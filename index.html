@@ -268,6 +268,29 @@ label{font-size:12px;font-weight:700;color:var(--ink-soft);display:block;margin-
 .toast.show{opacity:1;transform:translateX(-50%) translateY(-6px)}
 
 ::-webkit-scrollbar{width:0;height:0}
+
+/* ---- Collect OPD / Treatment modal ---- */
+.opd-in{width:100%;box-sizing:border-box;padding:13px 14px;border:1.5px solid var(--line);border-radius:12px;font-size:16px;font-family:inherit;background:#fff;color:var(--ink)}
+.opd-in:focus{outline:none;border-color:var(--pri)}
+.opd-seg{display:flex;gap:4px;background:var(--pri-light);padding:4px;border-radius:13px;margin-bottom:16px}
+.opd-seg button{flex:1;border:none;background:transparent;color:var(--pri-dark);font-weight:700;font-size:14px;padding:10px 6px;border-radius:10px;font-family:inherit;cursor:pointer}
+.opd-seg button.on{background:var(--pri);color:#fff;box-shadow:0 1px 4px rgba(0,0,0,.18)}
+.tx-lbl{font-size:12px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.4px;margin:4px 0 8px}
+.tx-chips{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.tx-chip{display:flex;justify-content:space-between;align-items:center;gap:10px;text-align:left;border:1.5px solid var(--line);background:#fff;border-radius:11px;padding:10px 12px;font-size:14px;color:var(--ink);font-family:inherit;cursor:pointer}
+.tx-chip b{white-space:nowrap}
+.tx-chip.on{border-color:var(--pri);background:var(--pri-light)}
+.tx-chip.on span:before{content:"\2713  ";color:var(--pri);font-weight:800}
+.tx-sum{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+.tx-sum div{background:var(--paper);border-radius:11px;padding:9px 6px;text-align:center}
+.tx-sum small{display:block;font-size:11px;color:var(--ink-soft);font-weight:600;text-transform:uppercase;letter-spacing:.3px}
+.tx-sum strong{display:block;font-size:16px;margin-top:2px}
+.tx-sum .bal{background:var(--bad-light)} .tx-sum .bal strong{color:var(--bad)}
+.tx-sum .paid strong{color:var(--good)}
+.tx-hist{margin-top:6px;border-top:1px dashed var(--line);padding-top:10px}
+.tx-hist .row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line);font-size:13px}
+.tx-hist .row small{display:block;color:var(--ink-soft)}
+.tx-hist .row button{border:none;background:var(--bad-light);color:var(--bad);border-radius:8px;padding:6px 10px;font-weight:700;cursor:pointer}
 </style>
 </head>
 <body>
@@ -408,37 +431,72 @@ label{font-size:12px;font-weight:700;color:var(--ink-soft);display:block;margin-
   </div>
 </div>
 
-<!-- ============ COLLECT OPD MODAL ============ -->
+<!-- ============ COLLECT OPD / TREATMENT MODAL ============ -->
 <div class="ov" id="opd-modal" onclick="if(event.target===this)closeModal('opd-modal')">
   <div class="modal">
     <div class="modal-head">
       <h3 id="opd-title">Collect OPD</h3>
       <button class="x-btn" onclick="closeModal('opd-modal')">&#10005;</button>
     </div>
-    <div class="modal-body">
+    <div class="modal-body" style="max-height:64vh;overflow-y:auto">
       <input type="hidden" id="opd-id"/>
       <div class="field">
         <label>Patient</label>
         <div id="opd-patient" style="font-weight:700;font-size:15px"></div>
       </div>
-      <div class="field">
-        <label>OPD amount (&#8377;)</label>
-        <input type="number" inputmode="numeric" min="0" id="opd-amount" placeholder="300"/>
-        <div style="font-size:11.5px;color:#888;margin-top:5px">Default is &#8377;300. If you change it, the new amount is remembered for next time.</div>
+      <div class="opd-seg">
+        <button type="button" id="kind-opd" onclick="setOpdKind('opd')">OPD</button>
+        <button type="button" id="kind-tx" onclick="setOpdKind('tx')">Treatment</button>
       </div>
-      <div class="field">
-        <label>Case type</label>
-        <select id="opd-case"><option value="New">New Case</option><option value="Old">Old Case</option></select>
+
+      <div id="opd-sec-opd">
+        <div class="field">
+          <label>OPD amount (&#8377;)</label>
+          <input class="opd-in" type="number" inputmode="numeric" min="0" id="opd-amount" placeholder="300"/>
+          <div style="font-size:11.5px;color:#888;margin-top:5px">Default is &#8377;300. If you change it, the new amount is remembered for next time.</div>
+        </div>
+        <div class="field">
+          <label>Case type</label>
+          <select class="opd-in" id="opd-case"><option value="New">New Case</option><option value="Old">Old Case</option></select>
+        </div>
+        <div class="field">
+          <label>Payment mode</label>
+          <select class="opd-in" id="opd-mode"><option>Cash</option><option>UPI</option><option>Card</option></select>
+        </div>
       </div>
-      <div class="field">
-        <label>Payment mode</label>
-        <select id="opd-mode"><option>Cash</option><option>UPI</option><option>Card</option></select>
+
+      <div id="opd-sec-tx" style="display:none">
+        <div id="tx-loading" style="padding:18px 4px;color:var(--ink-soft);font-size:14px">Loading treatments from main app&hellip;</div>
+        <div id="tx-empty" style="display:none;padding:14px;background:var(--amber-light);border-radius:12px;font-size:13.5px;line-height:1.5;color:#7a5410"></div>
+        <div id="tx-main" style="display:none">
+          <div class="field" id="tx-bill-wrap">
+            <label>Bill</label>
+            <select class="opd-in" id="tx-bill" onchange="renderTxBill()"></select>
+          </div>
+          <div class="tx-lbl">Treatments in this bill <span style="text-transform:none;font-weight:500">(tap to tag this payment)</span></div>
+          <div class="tx-chips" id="tx-items"></div>
+          <div class="tx-sum" id="tx-summary"></div>
+          <div class="field">
+            <label>Amount collecting now (&#8377;)</label>
+            <input class="opd-in" type="number" inputmode="numeric" min="0" id="tx-amount" oninput="updateTxRemain()"/>
+            <div id="tx-remain" style="font-size:13px;font-weight:600;margin-top:6px"></div>
+          </div>
+          <div class="field">
+            <label>Payment mode</label>
+            <select class="opd-in" id="tx-mode"><option>Cash</option><option>UPI</option><option>Card</option></select>
+          </div>
+          <div class="field">
+            <label>Note</label>
+            <input class="opd-in" type="text" id="tx-note" placeholder="e.g. RCT 16 - 2nd sitting" maxlength="120"/>
+          </div>
+        </div>
+        <div class="tx-hist" id="tx-history" style="display:none"></div>
       </div>
     </div>
     <div class="modal-foot">
       <button class="btn ghost" id="opd-del-btn" onclick="deleteOpd()" style="display:none;color:#b3261e;background:#fbeae8">Delete</button>
       <button class="btn ghost" onclick="closeModal('opd-modal')">Cancel</button>
-      <button class="btn pri" id="opd-save-btn" onclick="saveOpd()">Collect OPD</button>
+      <button class="btn pri" id="opd-save-btn" onclick="saveOpdModal()">Collect OPD</button>
     </div>
   </div>
 </div>
@@ -1121,7 +1179,8 @@ function apptCardHtml(a){
     +'<div class="appt-actions">'
       +(a.status!=='Done'?'<button class="chip-btn good" onclick="setStatus(\''+a.id+'\',\'Done\')">&#10003; Done</button>':'')
       +(a.status!=='Cancelled'?'<button class="chip-btn bad" onclick="setStatus(\''+a.id+'\',\'Cancelled\')">Cancel</button>':'')
-      +(a.status!=='Cancelled'?(a.opdPaid?'<button class="chip-btn good" onclick="openOpd(\''+a.id+'\')">&#8377;'+a.opdAmount+' OPD &#10003; &#9998;</button>':'<button class="chip-btn pri" onclick="openOpd(\''+a.id+'\')">&#8377; Collect OPD</button>'):'')
+      +(a.status!=='Cancelled'?(a.opdPaid?'<button class="chip-btn good" onclick="openOpd(\''+a.id+'\',\'opd\')">&#8377;'+a.opdAmount+' OPD &#10003; &#9998;</button>':'<button class="chip-btn pri" onclick="openOpd(\''+a.id+'\',\'opd\')">&#8377; Collect OPD</button>')
+        +((a.txPayments&&a.txPayments.length)?'<button class="chip-btn good" onclick="openOpd(\''+a.id+'\',\'tx\')">Treatment &#8377;'+a.txPayments.reduce((t,p)=>t+(Number(p.amt)||0),0).toLocaleString('en-IN')+' &#10003; &#9998;</button>':'<button class="chip-btn pri" onclick="openOpd(\''+a.id+'\',\'tx\')">&#8377; Treatment</button>'):'')
       +(a.phone?'<button class="chip-btn pri" onclick="window.open(waLink(appointments.find(x=>x.id===\''+a.id+'\')),\'_blank\')">&#128241; WhatsApp</button>':'')
       +(a.phone?'<button class="chip-btn pri" onclick="window.location.href=smsLink(appointments.find(x=>x.id===\''+a.id+'\'))">&#128172; SMS</button>':'')
       +'<button class="chip-btn" onclick="editAppt(\''+a.id+'\')">Edit</button>'
@@ -1137,19 +1196,168 @@ function apptCardHtml(a){
    Collecting again for the same appointment updates that same bill. */
 const OPD_DEFAULT_KEY='niva_appt_companion_opd_default';
 const OPD_MODE_KEY='niva_appt_companion_opd_mode';
-function getOpdDefault(){ const v=parseInt(localStorage.getItem(OPD_DEFAULT_KEY)||''); return v>=0 ? v : 300; }
-function openOpd(id){
+function getOpdDefault(){ const v=parseInt(localStorage.getItem(OPD_DEFAULT_KEY)||''); return v>0 ? v : 300; }
+const _g=id=>document.getElementById(id);
+let _opdKind='opd', _txBills=[], _txLoadedFor=null, _txAutoNote='', _txSel=new Set(), _txBusy=false;
+function inr(n){ return '\u20B9'+(Number(n)||0).toLocaleString('en-IN'); }
+function fmtD(s){ if(!s) return ''; const d=new Date(s+'T00:00:00'); return isNaN(d)?s:d.toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'}); }
+function toArr(x){ return Array.isArray(x)?x:(x&&typeof x==='object'?Object.values(x):[]); }
+function billPaidAmt(b){ return (Number(b.paidNow)||0)+toArr(b.payHistory).reduce((t,p)=>t+(Number(p&&p.amt)||0),0); }
+function touchAppt(a){ a.updatedAt=Date.now(); a.version=(a.version||0)+1; a.updatedBy='Niva Appointments app'; a.deviceId=deviceId(); a._unsynced=true; }
+function curOpdAppt(){ return appointments.find(x=>x.id===_g('opd-id').value); }
+
+function openOpd(id,kind){
   const a=appointments.find(x=>x.id===id); if(!a) return;
-  document.getElementById('opd-id').value=id;
-  document.getElementById('opd-patient').textContent=a.patient||'';
-  document.getElementById('opd-amount').value = a.opdPaid ? a.opdAmount : getOpdDefault();
-  document.getElementById('opd-mode').value = a.opdMode || localStorage.getItem(OPD_MODE_KEY) || 'Cash';
-  document.getElementById('opd-case').value = a.caseType || (isOldPatient(a.phone) ? 'Old' : 'New');
-  document.getElementById('opd-title').textContent = a.opdPaid ? 'Edit OPD' : 'Collect OPD';
-  document.getElementById('opd-save-btn').textContent = a.opdPaid ? 'Update OPD' : 'Collect OPD';
-  document.getElementById('opd-del-btn').style.display = a.opdPaid ? '' : 'none';
+  _g('opd-id').value=id;
+  _g('opd-patient').textContent=a.patient||'';
+  _g('opd-amount').value = a.opdPaid ? a.opdAmount : getOpdDefault();
+  _g('opd-mode').value = a.opdMode || localStorage.getItem(OPD_MODE_KEY) || 'Cash';
+  _g('opd-case').value = a.caseType || (isOldPatient(a.phone) ? 'Old' : 'New');
+  _g('tx-amount').value=''; _g('tx-note').value=''; _g('tx-mode').value=localStorage.getItem(OPD_MODE_KEY)||'Cash';
+  _txSel=new Set(); _txAutoNote=''; _txLoadedFor=null; _txBills=[];
+  setOpdKind(kind||'opd');
   openModal('opd-modal');
-  setTimeout(()=>{ const el=document.getElementById('opd-amount'); el.focus(); el.select(); },150);
+  if(_opdKind==='opd') setTimeout(()=>{ const el=_g('opd-amount'); el.focus(); el.select(); },150);
+}
+
+function setOpdKind(k){
+  _opdKind=k;
+  const a=curOpdAppt(); if(!a) return;
+  _g('kind-opd').classList.toggle('on',k==='opd');
+  _g('kind-tx').classList.toggle('on',k==='tx');
+  _g('opd-sec-opd').style.display = k==='opd' ? '' : 'none';
+  _g('opd-sec-tx').style.display  = k==='tx'  ? '' : 'none';
+  _g('opd-title').textContent = k==='opd' ? (a.opdPaid?'Edit OPD':'Collect OPD') : 'Collect Treatment Payment';
+  _g('opd-save-btn').textContent = k==='opd' ? (a.opdPaid?'Update OPD':'Collect OPD') : 'Collect Payment';
+  _g('opd-del-btn').style.display = (k==='opd' && a.opdPaid) ? '' : 'none';
+  if(k==='tx'){
+    renderTxHistory(a);
+    if(_txLoadedFor!==a.id) loadTxBills(a); else _g('opd-save-btn').disabled=!_txBills.length;
+  } else _g('opd-save-btn').disabled=false;
+}
+function saveOpdModal(){ if(_opdKind==='tx') saveTx(); else saveOpd(); }
+
+/* ---- Treatment payments: reads the patient's pending bills from the main app ---- */
+function loadTxBills(a){
+  const L=_g('tx-loading'), E=_g('tx-empty'), M=_g('tx-main'), S=_g('opd-save-btn');
+  L.style.display=''; L.textContent='Loading treatments from main app\u2026'; E.style.display='none'; M.style.display='none'; S.disabled=true;
+  const showEmpty=(msg)=>{ L.style.display='none'; M.style.display='none'; E.style.display=''; E.innerHTML=msg; S.disabled=true; };
+  if(!isConfigured()){ showEmpty('Connect to clinic data in Settings first.'); return; }
+  fbGET('bills').then(all=>{
+    if(_g('opd-id').value!==a.id || _opdKind!=='tx') return;
+    const d10=(a.phone||'').replace(/\D/g,'').slice(-10), nm=(a.patient||'').trim().toLowerCase();
+    let withTreatment=0; const list=[];
+    Object.keys(all||{}).forEach(k=>{
+      const b=all[k]; if(!b||!b.id) return;
+      const items=toArr(b.items).filter(Boolean); if(!items.length) return;
+      const p10=(b.phone||'').replace(/\D/g,'').slice(-10);
+      const same=(d10.length===10&&p10===d10)||(nm&&(b.patient||'').trim().toLowerCase()===nm&&(d10.length<10||p10.length<10));
+      if(!same) return;
+      withTreatment++;
+      const total=Number(b.total)||0, paid=billPaidAmt(b), bal=Math.max(0,total-paid);
+      if(bal>0) list.push({b,items,total,paid,bal});
+    });
+    list.sort((x,y)=>String(y.b.date||'').localeCompare(String(x.b.date||''))||String(y.b.id).localeCompare(String(x.b.id)));
+    _txBills=list; _txLoadedFor=a.id;
+    if(!list.length){
+      showEmpty(withTreatment
+        ? 'All treatment bills for this patient are <b>fully paid</b>. Add the new treatment to the bill in the main app first, then collect it here.'
+        : 'No treatment bill found for this patient in the main app. Create the treatment bill there first.');
+      return;
+    }
+    L.style.display='none'; E.style.display='none'; M.style.display=''; S.disabled=false;
+    _g('tx-bill').innerHTML=list.map((x,i)=>'<option value="'+i+'">'+escapeHtml(x.b.id)+' \u00B7 '+fmtD(x.b.date)+' \u00B7 Due '+inr(x.bal)+'</option>').join('');
+    _g('tx-bill-wrap').style.display=list.length>1?'':'none';
+    renderTxBill();
+  }).catch(err=>{ console.warn('[NivaAppt] load bills failed:', err.message); showEmpty('Could not load bills from the main app. Check internet and reopen.'); });
+}
+function curTxBill(){ return _txBills[parseInt(_g('tx-bill').value)||0]; }
+function renderTxBill(){
+  const x=curTxBill(); if(!x) return;
+  _txSel=new Set(); _txAutoNote=''; _g('tx-note').value='';
+  _g('tx-items').innerHTML=x.items.map((it,i)=>{
+    const q=(it.q!=null&&String(it.q).trim()!==''&&String(it.q).trim()!=='1')?' ('+escapeHtml(String(it.q).trim().replace(/,$/,''))+')':'';
+    return '<button type="button" class="tx-chip" id="txc-'+i+'" onclick="toggleTxItem('+i+')"><span>'+escapeHtml(it.n||'Treatment')+q+'</span><b>'+inr(it.a)+'</b></button>';
+  }).join('');
+  _g('tx-summary').innerHTML='<div><small>Total</small><strong>'+inr(x.total)+'</strong></div><div class="paid"><small>Paid</small><strong>'+inr(x.paid)+'</strong></div><div class="bal"><small>Balance</small><strong>'+inr(x.bal)+'</strong></div>';
+  _g('tx-amount').value=x.bal;
+  updateTxRemain();
+}
+function toggleTxItem(i){
+  const x=curTxBill(); if(!x) return;
+  if(_txSel.has(i)) _txSel.delete(i); else _txSel.add(i);
+  _g('txc-'+i).classList.toggle('on',_txSel.has(i));
+  const names=[...x.items.keys()].filter(j=>_txSel.has(j)).map(j=>{ const it=x.items[j]; const q=(it.q!=null&&String(it.q).trim()!==''&&String(it.q).trim()!=='1')?' ('+String(it.q).trim().replace(/,$/,'')+')':''; return (it.n||'Treatment')+q; });
+  const auto=names.join(', ');
+  const nEl=_g('tx-note');
+  if(!nEl.value.trim() || nEl.value===_txAutoNote) nEl.value=auto;
+  _txAutoNote=auto;
+}
+function updateTxRemain(){
+  const x=curTxBill(), el=_g('tx-remain'); if(!x) return;
+  const amt=parseFloat(_g('tx-amount').value)||0, rem=x.bal-amt;
+  if(amt>x.bal){ el.style.color='var(--bad)'; el.textContent='More than the balance ('+inr(x.bal)+')'; }
+  else if(amt>0){ el.style.color=rem===0?'var(--good)':'var(--ink-soft)'; el.textContent=rem===0?'\u2713 Bill will be fully paid':'Remaining after this: '+inr(rem); }
+  else { el.textContent=''; }
+}
+function saveTx(){
+  if(_txBusy) return;
+  const a=curOpdAppt(), x=curTxBill(); if(!a||!x) return;
+  const amt=Math.round((parseFloat(_g('tx-amount').value)||0)*100)/100;
+  if(!(amt>0)){ toast('Enter amount to collect'); return; }
+  if(amt>x.bal){ toast('Amount is more than balance '+inr(x.bal)); return; }
+  const mode=_g('tx-mode').value||'Cash', note=_g('tx-note').value.trim();
+  try{ localStorage.setItem(OPD_MODE_KEY, mode); }catch(e){}
+  const key=fbSafeKey(x.b.id), btn=_g('opd-save-btn');
+  _txBusy=true; btn.disabled=true; btn.textContent='Saving\u2026';
+  fbGET('bills/'+key).then(b=>{
+    if(!b||!b.id) throw new Error('Bill not found in main app');
+    const paid=billPaidAmt(b), bal=Math.max(0,(Number(b.total)||0)-paid);
+    if(amt>bal+0.001) throw new Error('Balance changed to '+inr(bal)+' -- reopen and try again');
+    const addedAt=Date.now();
+    const ph=toArr(b.payHistory); ph.push({amt,mode,date:todayStr(),note,txn:'',addedAt,by:'Appointments app'});
+    b.payHistory=ph;
+    const totalPaid=paid+amt;
+    b.paid=totalPaid; b.balance=Math.max(0,(Number(b.total)||0)-totalPaid); b.status=b.balance<=0?'Paid':'Pending';
+    b.updatedAt=Date.now(); b.version=(typeof b.version==='number'?b.version:0)+1; b.updatedBy='Niva Appointments app'; b.deviceId=deviceId();
+    return fbPUT('bills/'+key,b).then(()=>({addedAt,balance:b.balance}));
+  }).then(r=>{
+    a.txPayments=toArr(a.txPayments); a.txPayments.push({billId:x.b.id,amt,mode,date:todayStr(),note,addedAt:r.addedAt});
+    touchAppt(a); persistCache(); pushWithRetry(a);
+    closeModal('opd-modal'); renderActiveView();
+    toast(inr(amt)+' collected'+(r.balance>0?' \u00B7 balance '+inr(r.balance):' \u00B7 bill fully paid'));
+  }).catch(err=>{ console.warn('[NivaAppt] treatment payment failed:', err.message); toast(err.message&&err.message.indexOf('Bill')===0||err.message.indexOf('Balance')===0?err.message:'Could not save -- check internet and try again'); })
+  .then(()=>{ _txBusy=false; btn.disabled=false; btn.textContent='Collect Payment'; });
+}
+function renderTxHistory(a){
+  const box=_g('tx-history'), list=toArr(a.txPayments);
+  if(!list.length){ box.style.display='none'; box.innerHTML=''; return; }
+  box.style.display='';
+  box.innerHTML='<div class="tx-lbl">Collected from this appointment</div>'+list.map(p=>
+    '<div class="row"><div><b>'+inr(p.amt)+'</b> \u00B7 '+escapeHtml(p.mode||'')+' \u00B7 '+escapeHtml(p.billId||'')
+    +'<small>'+fmtD(p.date)+(p.note?' \u00B7 '+escapeHtml(p.note):'')+'</small></div>'
+    +'<button type="button" onclick="undoTxPayment('+p.addedAt+')">Delete</button></div>').join('');
+}
+function undoTxPayment(addedAt){
+  const a=curOpdAppt(); if(!a) return;
+  const p=toArr(a.txPayments).find(z=>Number(z.addedAt)===Number(addedAt)); if(!p) return;
+  if(!confirm('Delete payment '+inr(p.amt)+' ('+(p.billId||'')+')?\nThe bill balance in the main app will go back up.')) return;
+  const done=()=>{
+    a.txPayments=toArr(a.txPayments).filter(z=>Number(z.addedAt)!==Number(addedAt));
+    if(!a.txPayments.length) delete a.txPayments;
+    touchAppt(a); persistCache(); pushWithRetry(a); renderActiveView();
+    _txLoadedFor=null; renderTxHistory(a); loadTxBills(a); toast('Payment deleted');
+  };
+  if(!isConfigured()){ done(); return; }
+  const key=fbSafeKey(p.billId);
+  fbGET('bills/'+key).then(b=>{
+    if(!b||!b.id) return done();
+    b.payHistory=toArr(b.payHistory).filter(z=>Number(z&&z.addedAt)!==Number(addedAt));
+    const paid=billPaidAmt(b);
+    b.paid=paid; b.balance=Math.max(0,(Number(b.total)||0)-paid); b.status=b.balance<=0?'Paid':'Pending';
+    b.updatedAt=Date.now(); b.version=(typeof b.version==='number'?b.version:0)+1; b.updatedBy='Niva Appointments app'; b.deviceId=deviceId();
+    return fbPUT('bills/'+key,b).then(done);
+  }).catch(err=>{ console.warn('[NivaAppt] undo payment failed:', err.message); toast('Could not delete -- check internet and try again'); });
 }
 
 function fbShallowKeys(path){
@@ -1243,7 +1451,7 @@ function saveOpd(){
   if(isNaN(amt) || amt<0){ toast('Enter a valid amount'); return; }
   const mode=document.getElementById('opd-mode').value||'Cash';
   const wasPaid=!!a.opdPaid;
-  try{ localStorage.setItem(OPD_DEFAULT_KEY, String(amt)); localStorage.setItem(OPD_MODE_KEY, mode); }catch(e){}
+  try{ if(amt>0) localStorage.setItem(OPD_DEFAULT_KEY, String(amt)); localStorage.setItem(OPD_MODE_KEY, mode); }catch(e){}
   a.caseType=document.getElementById('opd-case').value||'New';
   a.opdPaid=true; a.opdAmount=amt; a.opdMode=mode; a.opdDate=todayStr(); a.opdCollectedAt=Date.now(); a.opdBillPending=true;
   a.updatedAt=Date.now(); a.version=(a.version||0)+1; a.updatedBy='Niva Appointments app'; a.deviceId=deviceId();
