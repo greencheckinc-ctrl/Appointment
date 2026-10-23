@@ -427,6 +427,10 @@ label{font-size:12px;font-weight:700;color:var(--ink-soft);display:block;margin-
         <div style="font-size:11.5px;color:#888;margin-top:5px">Default is &#8377;300. If you change it, the new amount is remembered for next time.</div>
       </div>
       <div class="field">
+        <label>Case type</label>
+        <select id="opd-case"><option value="New">New Case</option><option value="Old">Old Case</option></select>
+      </div>
+      <div class="field">
         <label>Payment mode</label>
         <select id="opd-mode"><option>Cash</option><option>UPI</option><option>Card</option></select>
       </div>
@@ -1139,6 +1143,7 @@ function openOpd(id){
   document.getElementById('opd-patient').textContent=a.patient||'';
   document.getElementById('opd-amount').value = a.opdPaid ? a.opdAmount : getOpdDefault();
   document.getElementById('opd-mode').value = a.opdMode || localStorage.getItem(OPD_MODE_KEY) || 'Cash';
+  document.getElementById('opd-case').value = a.caseType || (isOldPatient(a.phone) ? 'Old' : 'New');
   openModal('opd-modal');
   setTimeout(()=>{ const el=document.getElementById('opd-amount'); el.focus(); el.select(); },150);
 }
@@ -1164,7 +1169,8 @@ function buildOpdBill(a, id, existing){
   const b=Object.assign({}, existing||{}, {
     id, date:(existing&&existing.date)||todayStr(), patient:a.patient||'', age:(existing&&existing.age)||'',
     phone:a.phone||'', doctor:a.doctor||'', diag:(existing&&existing.diag)||'',
-    additionalDetail:(existing&&existing.additionalDetail)||'',
+    additionalDetail:(!existing||!existing.additionalDetail||/^OPD - (New|Old) Case$/.test(existing.additionalDetail))?('OPD - '+(a.caseType||'New')+' Case'):existing.additionalDetail,
+    caseType:a.caseType||'New',
     consult:amt, items:(existing&&existing.items)||[], sub:amt, disc:0, discLabel:'\u20B90', discType:'amt', discVal:0,
     total:amt, payType:'Full', paidNow:amt, balance:0, dueDate:'',
     mode:a.opdMode||'Cash', status:'Paid', manualPaid:true, upiTxn:'', payRef:'',
@@ -1208,6 +1214,7 @@ function saveOpd(){
   if(isNaN(amt) || amt<0){ toast('Enter a valid amount'); return; }
   const mode=document.getElementById('opd-mode').value||'Cash';
   try{ localStorage.setItem(OPD_DEFAULT_KEY, String(amt)); localStorage.setItem(OPD_MODE_KEY, mode); }catch(e){}
+  a.caseType=document.getElementById('opd-case').value||'New';
   a.opdPaid=true; a.opdAmount=amt; a.opdMode=mode; a.opdDate=todayStr(); a.opdCollectedAt=Date.now(); a.opdBillPending=true;
   a.updatedAt=Date.now(); a.version=(a.version||0)+1; a.updatedBy='Niva Appointments app'; a.deviceId=deviceId();
   a._unsynced=true;
@@ -1258,7 +1265,8 @@ function renderPatientChart(){
   appointments.forEach(a=>{
     const day=days.find(d=>d.key===a.date);
     if(!day) return;
-    if(isOldPatient(a.phone)) day.oldCount++; else day.newCount++;
+    const _old=a.caseType ? a.caseType==='Old' : isOldPatient(a.phone);
+    if(_old) day.oldCount++; else day.newCount++;
   });
 
   const totalAppts=days.reduce((t,d)=>t+d.newCount+d.oldCount,0);
