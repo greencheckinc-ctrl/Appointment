@@ -293,6 +293,25 @@ label{font-size:12px;font-weight:700;color:var(--ink-soft);display:block;margin-
 .tx-hist .row button{border:none;background:var(--bad-light);color:var(--bad);border-radius:8px;padding:6px 10px;font-weight:700;cursor:pointer}
 .tx-hist .row button.rc{background:var(--pri-light);color:var(--pri-dark);margin-right:6px}
 .tx-hist .row .btns{display:flex;flex-shrink:0}
+
+/* ---- compact appointment card + action box ---- */
+.appt-card.noshow{border-left-color:var(--amber);opacity:.72}
+.status-tag.NoShow{background:var(--amber-light);color:var(--amber)}
+.appt-row{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.appt-main{flex:1;min-width:0;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.appt-main .appt-name{display:flex;align-items:center;gap:4px}
+.appt-main .chev{color:var(--pri);font-weight:800;font-size:18px;line-height:1}
+.appt-right{display:flex;flex-direction:column;align-items:flex-end;gap:8px;flex-shrink:0}
+.appt-icons{display:flex;gap:8px}
+.ic-btn{width:40px;height:40px;border-radius:50%;border:1.5px solid var(--line);background:#fff;font-size:19px;font-weight:800;display:flex;align-items:center;justify-content:center;cursor:pointer;font-family:inherit;padding:0;line-height:1}
+.ic-btn.ok{color:var(--good);border-color:#bfe3cf}
+.ic-btn.ok.on{background:var(--good);color:#fff;border-color:var(--good)}
+.ic-btn.no{color:var(--bad);border-color:#f0c4bb}
+.ic-btn.no.on{background:var(--bad);color:#fff;border-color:var(--bad)}
+.appt-badges{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px;align-items:center}
+.appt-badges .pill{font-size:10.5px;font-weight:700;padding:3px 8px;border-radius:20px;background:var(--good-light);color:var(--good)}
+.box-det{display:flex;flex-direction:column;gap:6px;font-size:13.5px;color:var(--ink);margin-bottom:6px}
+.box-det span{display:flex;gap:8px;align-items:flex-start}
 </style>
 </head>
 <body>
@@ -359,6 +378,7 @@ label{font-size:12px;font-weight:700;color:var(--ink-soft);display:block;margin-
         <option value="Scheduled">Scheduled</option>
         <option value="Done">Done</option>
         <option value="Cancelled">Cancelled</option>
+        <option value="No Show">No Show</option>
       </select>
     </div>
     <div id="all-body"></div>
@@ -430,6 +450,17 @@ label{font-size:12px;font-weight:700;color:var(--ink-soft);display:block;margin-
       <button class="btn ghost" onclick="closeModal('appt-modal')">Cancel</button>
       <button class="btn pri" onclick="saveApptForm()">Save appointment</button>
     </div>
+  </div>
+</div>
+
+<!-- ============ APPOINTMENT ACTION BOX ============ -->
+<div class="ov" id="appt-box" onclick="if(event.target===this)closeModal('appt-box')">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="box-title"></h3>
+      <button class="x-btn" onclick="closeModal('appt-box')">&#10005;</button>
+    </div>
+    <div class="modal-body" id="box-body" style="max-height:70vh;overflow-y:auto"></div>
   </div>
 </div>
 
@@ -1187,27 +1218,64 @@ function fmtTime(t){ if(!t) return ''; const p=t.split(':'); const h=+p[0]; retu
 function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 function apptCardHtml(a){
-  const cls = a.status==='Done'?'done':(a.status==='Cancelled'?'cancelled':'');
-  return '<div class="appt-card '+cls+'">'
-    +'<div class="appt-top"><div><div class="appt-name">'+escapeHtml(a.patient)+'</div>'
-    +'<div class="appt-meta">'
-      +(a.doctor?'<span>&#128100; '+escapeHtml(a.doctor)+'</span>':'')
-      +(a.purpose?'<span>&#129681; '+escapeHtml(a.purpose)+'</span>':'')
-      +(a.phone?'<span>&#128222; '+escapeHtml(a.phone)+'</span>':'')
-    +'</div></div>'
-    +'<div style="text-align:right"><div class="appt-time">'+(a.time?fmtTime(a.time):'')+'</div>'
-    +'<span class="status-tag '+a.status+'">'+a.status+'</span></div></div>'
-    +'<div class="appt-actions">'
-      +(a.status!=='Done'?'<button class="chip-btn good" onclick="setStatus(\''+a.id+'\',\'Done\')">&#10003; Done</button>':'')
-      +(a.status!=='Cancelled'?'<button class="chip-btn bad" onclick="setStatus(\''+a.id+'\',\'Cancelled\')">Cancel</button>':'')
-      +(a.status!=='Cancelled'?'<button class="chip-btn pri" onclick="openOpd(\''+a.id+'\')">&#8377; Collect</button>'
-        +(a.opdPaid?'<button class="chip-btn good" onclick="openOpd(\''+a.id+'\',\'opd\')">OPD &#8377;'+Number(a.opdAmount||0).toLocaleString('en-IN')+' &#10003; &#9998;</button>':'')
-        +((a.txPayments&&a.txPayments.length)?'<button class="chip-btn good" onclick="openOpd(\''+a.id+'\',\'tx\')">Treatment &#8377;'+a.txPayments.reduce((t,p)=>t+(Number(p.amt)||0),0).toLocaleString('en-IN')+' &#10003; &#9998;</button>':''):'')
-      +(a.phone?'<button class="chip-btn pri" onclick="window.open(waLink(appointments.find(x=>x.id===\''+a.id+'\')),\'_blank\')">&#128241; WhatsApp</button>':'')
-      +(a.phone?'<button class="chip-btn pri" onclick="window.location.href=smsLink(appointments.find(x=>x.id===\''+a.id+'\'))">&#128172; SMS</button>':'')
-      +'<button class="chip-btn" onclick="editAppt(\''+a.id+'\')">Edit</button>'
-      +'<button class="chip-btn" onclick="deleteAppt(\''+a.id+'\')">Delete</button>'
+  const cls = a.status==='Done'?'done':(a.status==='Cancelled'?'cancelled':(a.status==='No Show'?'noshow':''));
+  const sc = String(a.status||'').replace(/\s+/g,'');
+  const txSum = (a.txPayments&&a.txPayments.length) ? a.txPayments.reduce((t,p)=>t+(Number(p.amt)||0),0) : 0;
+  return '<div class="appt-card '+cls+'"><div class="appt-row">'
+    +'<div class="appt-main" onclick="openApptBox(\''+a.id+'\')">'
+      +'<div class="appt-name">'+escapeHtml(a.patient)+'<span class="chev">&#8250;</span></div>'
+      +'<div class="appt-meta">'
+        +(a.doctor?'<span>&#128100; '+escapeHtml(a.doctor)+'</span>':'')
+        +(a.purpose?'<span>&#129681; '+escapeHtml(a.purpose)+'</span>':'')
+      +'</div>'
+      +'<div class="appt-badges"><span class="status-tag '+sc+'">'+escapeHtml(a.status||'')+'</span>'
+        +(a.opdPaid?'<span class="pill">OPD &#8377;'+Number(a.opdAmount||0).toLocaleString('en-IN')+'</span>':'')
+        +(txSum?'<span class="pill">Treatment &#8377;'+txSum.toLocaleString('en-IN')+'</span>':'')
+      +'</div>'
+    +'</div>'
+    +'<div class="appt-right"><div class="appt-time">'+(a.time?fmtTime(a.time):'')+'</div>'
+      +'<div class="appt-icons">'
+        +'<button class="ic-btn ok'+(a.status==='Done'?' on':'')+'" title="Show" aria-label="Show" onclick="toggleShow(\''+a.id+'\',\'Done\')">&#10003;</button>'
+        +'<button class="ic-btn no'+(a.status==='No Show'?' on':'')+'" title="Not show" aria-label="Not show" onclick="toggleShow(\''+a.id+'\',\'No Show\')">&#10005;</button>'
+      +'</div></div>'
     +'</div></div>';
+}
+// Tap the green tick (patient showed up) or the red cross (did not show). Tap again to undo.
+function toggleShow(id,status){
+  const a=appointments.find(x=>x.id===id); if(!a) return;
+  setStatus(id, a.status===status ? 'Scheduled' : status);
+}
+// Tap the patient name: opens the box with every action for this appointment.
+function openApptBox(id){
+  const a=appointments.find(x=>x.id===id); if(!a) return;
+  const sc=String(a.status||'').replace(/\s+/g,'');
+  const Q=v=>"'"+String(v).replace(/\\/g,'\\\\').replace(/'/g,"\\'")+"'";
+  const ID=Q(a.id);
+  const close="closeModal('appt-box');";
+  const btn=(cls,label,code)=>'<button class="chip-btn '+cls+'" onclick="'+(close+code).replace(/"/g,'&quot;')+'">'+label+'</button>';
+  _g('box-title').textContent=a.patient||'';
+  const det='<div class="box-det">'
+    +'<span>&#128197; '+escapeHtml(fmtDate(a.date))+(a.time?' &middot; '+escapeHtml(fmtTime(a.time)):'')+'</span>'
+    +(a.doctor?'<span>&#128100; '+escapeHtml(a.doctor)+'</span>':'')
+    +(a.purpose?'<span>&#129681; '+escapeHtml(a.purpose)+'</span>':'')
+    +(a.phone?'<span>&#128222; '+escapeHtml(a.phone)+'</span>':'')
+    +(a.notes?'<span>&#128221; '+escapeHtml(a.notes)+'</span>':'')
+    +'<span><span class="status-tag '+sc+'">'+escapeHtml(a.status||'')+'</span></span></div>';
+  const txSum=(a.txPayments&&a.txPayments.length)?a.txPayments.reduce((t,p)=>t+(Number(p.amt)||0),0):0;
+  const act='<div class="appt-actions">'
+    +(a.status!=='Done'?btn('good','&#10003; Show','setStatus('+ID+",'Done')"):'')
+    +(a.status!=='No Show'?btn('bad','&#10005; Not show','setStatus('+ID+",'No Show')"):'')
+    +(a.status!=='Cancelled'?btn('bad','Cancel','setStatus('+ID+",'Cancelled')"):'')
+    +(a.status!=='Cancelled'?btn('pri','&#8377; Collect','openOpd('+ID+')'):'')
+    +(a.opdPaid?btn('good','OPD &#8377;'+Number(a.opdAmount||0).toLocaleString('en-IN')+' &#10003; &#9998;','openOpd('+ID+",'opd')"):'')
+    +(txSum?btn('good','Treatment &#8377;'+txSum.toLocaleString('en-IN')+' &#10003; &#9998;','openOpd('+ID+",'tx')"):'')
+    +(a.phone?btn('pri','&#128241; WhatsApp','window.open(waLink(appointments.find(x=>x.id==='+ID+")),'_blank')"):'')
+    +(a.phone?btn('pri','&#128172; SMS','window.location.href=smsLink(appointments.find(x=>x.id==='+ID+'))'):'')
+    +btn('','Edit','editAppt('+ID+')')
+    +btn('','Delete','deleteAppt('+ID+')')
+    +'</div>';
+  _g('box-body').innerHTML=det+act;
+  openModal('appt-box');
 }
 
 /* ---------------- OPD collection ----------------
@@ -1678,7 +1746,7 @@ function renderToday(){
 
 function renderUpcoming(){
   const td=todayStr();
-  const future=appointments.filter(a=>a.date>td && a.status!=='Cancelled').sort((a,b)=> a.date===b.date ? (a.time||'').localeCompare(b.time||'') : a.date.localeCompare(b.date));
+  const future=appointments.filter(a=>a.date>td && a.status!=='Cancelled' && a.status!=='No Show').sort((a,b)=> a.date===b.date ? (a.time||'').localeCompare(b.time||'') : a.date.localeCompare(b.date));
   const body=document.getElementById('upcoming-body');
   if(!future.length){ body.innerHTML=emptyHtml('No upcoming appointments.'); return; }
   const groups={};
