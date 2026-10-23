@@ -412,7 +412,7 @@ label{font-size:12px;font-weight:700;color:var(--ink-soft);display:block;margin-
 <div class="ov" id="opd-modal" onclick="if(event.target===this)closeModal('opd-modal')">
   <div class="modal">
     <div class="modal-head">
-      <h3>Collect OPD</h3>
+      <h3 id="opd-title">Collect OPD</h3>
       <button class="x-btn" onclick="closeModal('opd-modal')">&#10005;</button>
     </div>
     <div class="modal-body">
@@ -436,8 +436,9 @@ label{font-size:12px;font-weight:700;color:var(--ink-soft);display:block;margin-
       </div>
     </div>
     <div class="modal-foot">
+      <button class="btn ghost" id="opd-del-btn" onclick="deleteOpd()" style="display:none;color:#b3261e;background:#fbeae8">Delete</button>
       <button class="btn ghost" onclick="closeModal('opd-modal')">Cancel</button>
-      <button class="btn pri" onclick="saveOpd()">Collect OPD</button>
+      <button class="btn pri" id="opd-save-btn" onclick="saveOpd()">Collect OPD</button>
     </div>
   </div>
 </div>
@@ -1120,7 +1121,7 @@ function apptCardHtml(a){
     +'<div class="appt-actions">'
       +(a.status!=='Done'?'<button class="chip-btn good" onclick="setStatus(\''+a.id+'\',\'Done\')">&#10003; Done</button>':'')
       +(a.status!=='Cancelled'?'<button class="chip-btn bad" onclick="setStatus(\''+a.id+'\',\'Cancelled\')">Cancel</button>':'')
-      +(a.status!=='Cancelled'?(a.opdPaid?'<button class="chip-btn good" onclick="openOpd(\''+a.id+'\')">&#8377;'+a.opdAmount+' OPD &#10003;</button>':'<button class="chip-btn pri" onclick="openOpd(\''+a.id+'\')">&#8377; Collect OPD</button>'):'')
+      +(a.status!=='Cancelled'?(a.opdPaid?'<button class="chip-btn good" onclick="openOpd(\''+a.id+'\')">&#8377;'+a.opdAmount+' OPD &#10003; &#9998;</button>':'<button class="chip-btn pri" onclick="openOpd(\''+a.id+'\')">&#8377; Collect OPD</button>'):'')
       +(a.phone?'<button class="chip-btn pri" onclick="window.open(waLink(appointments.find(x=>x.id===\''+a.id+'\')),\'_blank\')">&#128241; WhatsApp</button>':'')
       +(a.phone?'<button class="chip-btn pri" onclick="window.location.href=smsLink(appointments.find(x=>x.id===\''+a.id+'\'))">&#128172; SMS</button>':'')
       +'<button class="chip-btn" onclick="editAppt(\''+a.id+'\')">Edit</button>'
@@ -1144,6 +1145,9 @@ function openOpd(id){
   document.getElementById('opd-amount').value = a.opdPaid ? a.opdAmount : getOpdDefault();
   document.getElementById('opd-mode').value = a.opdMode || localStorage.getItem(OPD_MODE_KEY) || 'Cash';
   document.getElementById('opd-case').value = a.caseType || (isOldPatient(a.phone) ? 'Old' : 'New');
+  document.getElementById('opd-title').textContent = a.opdPaid ? 'Edit OPD' : 'Collect OPD';
+  document.getElementById('opd-save-btn').textContent = a.opdPaid ? 'Update OPD' : 'Collect OPD';
+  document.getElementById('opd-del-btn').style.display = a.opdPaid ? '' : 'none';
   openModal('opd-modal');
   setTimeout(()=>{ const el=document.getElementById('opd-amount'); el.focus(); el.select(); },150);
 }
@@ -1207,19 +1211,45 @@ function retryOpdBills(){
   appointments.filter(a=>a.opdPaid && a.opdBillPending).forEach(syncOpdBill);
 }
 
+function deleteOpd(){
+  const id=document.getElementById('opd-id').value;
+  const a=appointments.find(x=>x.id===id); if(!a || !a.opdPaid) return;
+  if(_opdBusy[a.id]){ toast('Sending to main app... try again in a moment'); return; }
+  if(!confirm('Delete OPD \u20B9'+a.opdAmount+' for '+(a.patient||'this patient')+'?\n\nThe OPD bill will also be removed from the main app. If the main app already downloaded it, delete it there too (Bills list).')) return;
+  const clearLocal=()=>{
+    ['opdPaid','opdAmount','opdMode','opdDate','opdCollectedAt','opdBillPending','opdBillId','caseType'].forEach(k=>{ delete a[k]; });
+    a.updatedAt=Date.now(); a.version=(a.version||0)+1; a.updatedBy='Niva Appointments app'; a.deviceId=deviceId();
+    a._unsynced=true;
+    persistCache(); closeModal('opd-modal'); renderActiveView();
+    toast('OPD deleted');
+    pushWithRetry(a);
+  };
+  if(!a.opdBillId || !isConfigured()){ clearLocal(); return; }
+  const key=fbSafeKey(a.opdBillId);
+  fbGET('bills/'+key).then(b=>{
+    if(b && b.items && b.items.length){
+      toast('This bill has treatments in the main app -- remove OPD from the bill there');
+      return;
+    }
+    if(!b) return clearLocal();
+    return fbPUT('bills/'+key, null).then(clearLocal);
+  }).catch(err=>{ console.warn('[NivaAppt] OPD delete failed:', err.message); toast('Could not delete -- check internet and try again'); });
+}
+
 function saveOpd(){
   const id=document.getElementById('opd-id').value;
   const a=appointments.find(x=>x.id===id); if(!a) return;
   const amt=parseInt(document.getElementById('opd-amount').value);
   if(isNaN(amt) || amt<0){ toast('Enter a valid amount'); return; }
   const mode=document.getElementById('opd-mode').value||'Cash';
+  const wasPaid=!!a.opdPaid;
   try{ localStorage.setItem(OPD_DEFAULT_KEY, String(amt)); localStorage.setItem(OPD_MODE_KEY, mode); }catch(e){}
   a.caseType=document.getElementById('opd-case').value||'New';
   a.opdPaid=true; a.opdAmount=amt; a.opdMode=mode; a.opdDate=todayStr(); a.opdCollectedAt=Date.now(); a.opdBillPending=true;
   a.updatedAt=Date.now(); a.version=(a.version||0)+1; a.updatedBy='Niva Appointments app'; a.deviceId=deviceId();
   a._unsynced=true;
   persistCache(); closeModal('opd-modal'); renderActiveView();
-  toast('OPD \u20B9'+amt+' collected');
+  toast('OPD \u20B9'+amt+(wasPaid?' updated':' collected'));
   pushWithRetry(a);
   syncOpdBill(a);
 }
