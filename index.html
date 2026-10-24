@@ -319,6 +319,7 @@ label{font-size:12px;font-weight:700;color:var(--ink-soft);display:block;margin-
 .tx-add{background:var(--paper);border:1.5px dashed var(--line);border-radius:14px;padding:12px;margin-bottom:14px}
 .tx-add-head{display:flex;justify-content:space-between;align-items:center;font-weight:800;font-size:14px;color:var(--pri-dark);cursor:pointer}
 .tx-add-body{margin-top:12px}
+.tx-x.ed{color:var(--pri)}
 </style>
 </head>
 <body>
@@ -518,7 +519,7 @@ label{font-size:12px;font-weight:700;color:var(--ink-soft);display:block;margin-
 
       <div id="opd-sec-tx" style="display:none">
         <div class="tx-add">
-          <div class="tx-add-head" onclick="toggleTxAdd()"><span>&#65291; Add treatment</span><span id="tx-add-arrow">&#9662;</span></div>
+          <div class="tx-add-head" onclick="toggleTxAdd()"><span id="tx-add-title">&#65291; Add treatment</span><span id="tx-add-arrow">&#9662;</span></div>
           <div class="tx-add-body" id="tx-add-body" style="display:none">
             <div class="field">
               <label>Treatment</label>
@@ -536,11 +537,12 @@ label{font-size:12px;font-weight:700;color:var(--ink-soft);display:block;margin-
               </div>
             </div>
             <div id="tx-add-preview" style="font-size:13px;font-weight:700;color:var(--pri-dark);margin:-4px 0 10px"></div>
-            <div class="field">
+            <div class="field" id="tx-add-bill-wrap">
               <label>Add to</label>
               <select class="opd-in" id="tx-add-bill" onchange="_txAddTargetId=(this.value==='new')?'new':((_txBills[parseInt(this.value)]||{b:{}}).b.id||'new')"></select>
             </div>
             <button type="button" class="btn pri" id="tx-add-btn" onclick="saveTxAdd()" style="width:100%">Add treatment</button>
+            <button type="button" class="btn ghost" id="tx-edit-cancel" onclick="cancelTxEdit()" style="display:none;width:100%;margin-top:8px">Cancel edit</button>
             <div style="font-size:11.5px;color:#888;margin-top:8px">Saved to the main app with its charge. You can add more treatments after this.</div>
           </div>
         </div>
@@ -1361,6 +1363,7 @@ function openOpd(id,kind){
   _g('opd-case').value = a.caseType || (isOldPatient(a.phone) ? 'Old' : 'New');
   _g('tx-amount').value=''; _g('tx-note').value=''; _g('tx-mode').value=localStorage.getItem(OPD_MODE_KEY)||'Cash';
   _txSel=new Set(); _txAutoNote=''; _txLoadedFor=null; _txBills=[]; _txAddTargetId=null;
+  if(typeof cancelTxEdit==='function') cancelTxEdit();
   setOpdKind(kind||(a.opdPaid?'tx':'opd'));
   openModal('opd-modal');
   if(_opdKind==='opd') setTimeout(()=>{ const el=_g('opd-amount'); el.focus(); el.select(); },150);
@@ -1428,10 +1431,10 @@ function allocPending(b,items,total,paid){
   items.forEach(it=>comps.push({it,amt:Number(it.a)||0}));
   const gross=comps.reduce((t,c)=>t+c.amt,0);
   let disc=Math.max(0,gross-total), left=paid;
-  comps.forEach(c=>{ const take=Math.min(left,c.amt); c.rem=c.amt-take; left-=take; });
+  comps.forEach(c=>{ const take=Math.min(left,c.amt); c.rem=c.amt-take; c.paidTake=take; left-=take; });
   for(let k=comps.length-1;k>=0&&disc>0;k--){ const t=Math.min(disc,comps[k].rem); comps[k].rem-=t; disc-=t; }
   return {
-    pend:comps.filter(c=>c.rem>0.005).map(c=>({it:c.it,rem:c.rem,orig:c.amt})),
+    pend:comps.filter(c=>c.rem>0.005).map(c=>({it:c.it,rem:c.rem,orig:c.amt,paidTake:c.paidTake||0})),
     paidNames:comps.filter(c=>!c.c&&c.rem<=0.005).map(c=>txLabel(c.it))
   };
 }
@@ -1441,11 +1444,11 @@ function renderTxBill(){
   const x=curTxBill(); if(!x) return;
   _txSel=new Set(); _txAutoNote=''; _g('tx-note').value='';
   _g('tx-items').innerHTML=x.pend.map((p,i)=>{
-    const canX=p.it&&p.it.by==='Appointments app'&&p.it.addedAt&&p.rem>=p.orig-0.005;
+    const canX=p.it&&p.it.by==='Appointments app'&&p.it.addedAt&&p.paidTake<=0.005;
     return '<div class="tx-chip-row"><button type="button" class="tx-chip" id="txc-'+i+'" onclick="toggleTxItem('+i+')"><span>'+escapeHtml(txLabel(p.it))
     +(p.rem<p.orig-0.005?'<small style="display:block;color:var(--ink-soft);font-weight:500;margin-left:18px">of '+inr(p.orig)+'</small>':'')
     +'</span><b>'+inr(p.rem)+'</b></button>'
-    +(canX?'<button type="button" class="tx-x" title="Remove" onclick="removeTxItem('+p.it.addedAt+')">&#10005;</button>':'')+'</div>';
+    +(canX?'<button type="button" class="tx-x ed" title="Edit" onclick="editTxItem('+p.it.addedAt+')">&#9998;</button><button type="button" class="tx-x" title="Delete" onclick="removeTxItem('+p.it.addedAt+')">&#10005;</button>':'')+'</div>';
   }).join('')+(x.paidNames.length?'<div style="font-size:12px;color:var(--ink-soft);padding:2px 2px 0">Already paid: '+escapeHtml(x.paidNames.join(', '))+'</div>':'');
   _g('tx-summary').innerHTML='<div><small>Bill total</small><strong>'+inr(x.total)+'</strong></div><div class="paid"><small>Paid</small><strong>'+inr(x.paid)+'</strong></div><div class="bal"><small>Balance</small><strong>'+inr(x.bal)+'</strong></div>';
   _g('tx-amount').value=x.bal;
@@ -1668,6 +1671,7 @@ function recalcBillTotals(b){
   return b;
 }
 function saveTxAdd(){
+  if(_txEditAddedAt!=null){ saveTxEdit(); return; }
   if(_txAddBusy) return;
   const a=curOpdAppt(); if(!a) return;
   const n=_g('tx-add-name').value.trim();
@@ -1720,6 +1724,54 @@ function removeTxItem(addedAt){
     return fbPUT('bills/'+key,b);
   }).then(()=>{ toast('Treatment removed'); _txLoadedFor=null; loadTxBills(a); })
   .catch(err=>{ console.warn('[NivaAppt] remove treatment failed:', err.message); toast('Could not remove -- check internet and try again'); });
+}
+
+/* ---- Edit a treatment added from this app (only while no payment is applied to it) ---- */
+let _txEditAddedAt=null;
+function setTxEditMode(on){
+  _g('tx-add-title').innerHTML = on ? '&#9998; Edit treatment' : '&#65291; Add treatment';
+  _g('tx-add-btn').textContent = on ? 'Update treatment' : 'Add treatment';
+  _g('tx-edit-cancel').style.display = on ? '' : 'none';
+  _g('tx-add-bill-wrap').style.display = on ? 'none' : '';
+}
+function editTxItem(addedAt){
+  const x=curTxBill(); if(!x) return;
+  const it=x.items.find(z=>Number(z.addedAt)===Number(addedAt)); if(!it) return;
+  _txEditAddedAt=Number(addedAt);
+  _g('tx-add-name').value=it.n||''; _g('tx-add-qty').value=it.q||'1'; _g('tx-add-rate').value=it.r||'';
+  setTxEditMode(true); txAddPreview(); toggleTxAdd(true);
+  const box=_g('opd-sec-tx'); if(box&&box.scrollIntoView) box.scrollIntoView({block:'start'});
+}
+function cancelTxEdit(){
+  _txEditAddedAt=null; setTxEditMode(false);
+  _g('tx-add-name').value=''; _g('tx-add-rate').value=''; _g('tx-add-qty').value='1'; _g('tx-add-preview').textContent='';
+}
+function saveTxEdit(){
+  if(_txAddBusy) return;
+  const a=curOpdAppt(), x=curTxBill(); if(!a||!x||_txEditAddedAt==null) return;
+  const n=_g('tx-add-name').value.trim();
+  const q=(_g('tx-add-qty').value||'1').trim()||'1';
+  const r=parseFloat(_g('tx-add-rate').value)||0;
+  if(!n){ toast('Enter treatment name'); return; }
+  if(!(r>0)){ toast('Enter the charge'); return; }
+  const qNum=txQtyNum(q), amt=Math.round(qNum*r), btn=_g('tx-add-btn'), key=fbSafeKey(x.b.id), at=_txEditAddedAt;
+  _txAddBusy=true; btn.disabled=true; btn.textContent='Saving\u2026';
+  fbGET('bills/'+key).then(b=>{
+    if(!b||!b.id) throw new Error('Bill not found in main app');
+    b.items=toArr(b.items).filter(Boolean);
+    const it=b.items.find(z=>Number(z.addedAt)===at);
+    if(!it) throw new Error('Bill changed in main app -- reopen and try again');
+    const old=Object.assign({},it);
+    Object.assign(it,{n,q,qNum,r,a:amt,editedAt:Date.now()});
+    const sub=b.items.reduce((t,z)=>t+(Number(z.a)||0),0)+(Number(b.consult)||0);
+    if(Math.max(0,sub-(Number(b.disc)||0))<billPaidAmt(b)-0.001){ Object.assign(it,old); throw new Error('Bill changed: charge is lower than the amount already paid'); }
+    recalcBillTotals(b);
+    return fbPUT('bills/'+key,b).then(()=>b.id);
+  }).then(billId=>{
+    toast(n+' updated \u00B7 '+inr(amt));
+    _txAddTargetId=billId; cancelTxEdit(); _txLoadedFor=null; loadTxBills(a);
+  }).catch(err=>{ console.warn('[NivaAppt] edit treatment failed:', err.message); toast(err.message&&(err.message.indexOf('Bill')===0)?err.message:'Could not save -- check internet and try again'); })
+  .then(()=>{ _txAddBusy=false; btn.disabled=false; btn.textContent=_txEditAddedAt!=null?'Update treatment':'Add treatment'; });
 }
 
 function fbShallowKeys(path){
