@@ -312,6 +312,13 @@ label{font-size:12px;font-weight:700;color:var(--ink-soft);display:block;margin-
 .appt-badges .pill{font-size:10.5px;font-weight:700;padding:3px 8px;border-radius:20px;background:var(--good-light);color:var(--good)}
 .box-det{display:flex;flex-direction:column;gap:6px;font-size:13.5px;color:var(--ink);margin-bottom:6px}
 .box-det span{display:flex;gap:8px;align-items:flex-start}
+.ags{font-weight:600;font-size:12px;color:var(--ink-soft);margin-left:6px;white-space:nowrap}
+.tx-chip-row{display:flex;gap:6px}
+.tx-chip-row .tx-chip{flex:1;min-width:0}
+.tx-x{width:42px;flex-shrink:0;border:1.5px solid var(--line);border-radius:11px;background:#fff;color:var(--bad);font-weight:800;font-size:15px;cursor:pointer;font-family:inherit}
+.tx-add{background:var(--paper);border:1.5px dashed var(--line);border-radius:14px;padding:12px;margin-bottom:14px}
+.tx-add-head{display:flex;justify-content:space-between;align-items:center;font-weight:800;font-size:14px;color:var(--pri-dark);cursor:pointer}
+.tx-add-body{margin-top:12px}
 </style>
 </head>
 <body>
@@ -419,6 +426,16 @@ label{font-size:12px;font-weight:700;color:var(--ink-soft);display:block;margin-
       </div>
       <div class="row2">
         <div class="field">
+          <label>Age</label>
+          <input class="opd-in" type="number" inputmode="numeric" min="0" max="120" id="f-age" placeholder="e.g. 28"/>
+        </div>
+        <div class="field">
+          <label>Sex</label>
+          <select class="opd-in" id="f-gender"><option value="">Select</option><option value="Male">Male</option><option value="Female">Female</option><option value="Other">Other</option></select>
+        </div>
+      </div>
+      <div class="row2">
+        <div class="field">
           <label>Date *</label>
           <input type="date" id="f-date"/>
         </div>
@@ -500,6 +517,33 @@ label{font-size:12px;font-weight:700;color:var(--ink-soft);display:block;margin-
       </div>
 
       <div id="opd-sec-tx" style="display:none">
+        <div class="tx-add">
+          <div class="tx-add-head" onclick="toggleTxAdd()"><span>&#65291; Add treatment</span><span id="tx-add-arrow">&#9662;</span></div>
+          <div class="tx-add-body" id="tx-add-body" style="display:none">
+            <div class="field">
+              <label>Treatment</label>
+              <input class="opd-in" type="text" id="tx-add-name" list="tx-svc-list" placeholder="e.g. Root Canal" autocomplete="off" oninput="txSvcPick()" onchange="txSvcPick()"/>
+              <datalist id="tx-svc-list"></datalist>
+            </div>
+            <div class="row2">
+              <div class="field">
+                <label>Tooth / Qty</label>
+                <input class="opd-in" type="text" id="tx-add-qty" value="1" placeholder="16,17 or 1" oninput="txAddPreview()"/>
+              </div>
+              <div class="field">
+                <label>Charge (&#8377;) each</label>
+                <input class="opd-in" type="number" inputmode="numeric" min="0" id="tx-add-rate" placeholder="3500" oninput="txAddPreview()"/>
+              </div>
+            </div>
+            <div id="tx-add-preview" style="font-size:13px;font-weight:700;color:var(--pri-dark);margin:-4px 0 10px"></div>
+            <div class="field">
+              <label>Add to</label>
+              <select class="opd-in" id="tx-add-bill" onchange="_txAddTargetId=(this.value==='new')?'new':((_txBills[parseInt(this.value)]||{b:{}}).b.id||'new')"></select>
+            </div>
+            <button type="button" class="btn pri" id="tx-add-btn" onclick="saveTxAdd()" style="width:100%">Add treatment</button>
+            <div style="font-size:11.5px;color:#888;margin-top:8px">Saved to the main app with its charge. You can add more treatments after this.</div>
+          </div>
+        </div>
         <div id="tx-loading" style="padding:18px 4px;color:var(--ink-soft);font-size:14px">Loading treatments from main app&hellip;</div>
         <div id="tx-empty" style="display:none;padding:14px;background:var(--amber-light);border-radius:12px;font-size:13.5px;line-height:1.5;color:#7a5410"></div>
         <div id="tx-main" style="display:none">
@@ -839,6 +883,8 @@ function selectPatientSuggestion(id){
   const p=patients.find(x=>x.id===id); if(!p) return;
   document.getElementById('f-patient').value=p.name||'';
   document.getElementById('f-phone').value=p.phone||'';
+  if(!document.getElementById('f-age').value){ const ag=parseInt(p.age); if(!isNaN(ag)) document.getElementById('f-age').value=ag; }
+  if(!document.getElementById('f-gender').value) document.getElementById('f-gender').value=genderFull(p.gender);
   document.getElementById('patient-suggest').classList.remove('show');
   document.getElementById('phone-suggest').classList.remove('show');
 }
@@ -1016,6 +1062,11 @@ function applyNewApptDefaults(){
   fill('f-locationlink', CFG.clinicMapLink);
 }
 
+
+// "58 / M" -- same Age / Gender format the main app uses on bills
+function genderShort(g){ g=String(g||'').trim(); if(!g) return ''; return /^m/i.test(g)?'M':(/^f/i.test(g)?'F':(/^o/i.test(g)?'O':g.charAt(0).toUpperCase())); }
+function genderFull(g){ g=String(g||'').trim(); if(!g) return ''; return /^m/i.test(g)?'Male':(/^f/i.test(g)?'Female':'Other'); }
+function ageSexLabel(a){ const age=parseInt(a&&a.age); return [isNaN(age)?'':age, genderShort(a&&a.gender)].filter(Boolean).join(' / '); }
 function openApptForm(existing){
   document.getElementById('appt-modal-title').textContent = existing ? 'Edit appointment' : 'New appointment';
   document.getElementById('f-id').value = existing ? existing.id : '';
@@ -1028,6 +1079,8 @@ function openApptForm(existing){
   document.getElementById('f-location').value = existing ? existing.location||'' : '';
   document.getElementById('f-locationlink').value = existing ? existing.locationLink||'' : '';
   document.getElementById('f-notes').value = existing ? existing.notes||'' : '';
+  document.getElementById('f-age').value = existing ? (parseInt(existing.age)||'') : '';
+  document.getElementById('f-gender').value = existing ? genderFull(existing.gender) : '';
   refreshDoctorList();
   applyNewApptDefaults();
   document.getElementById('patient-suggest').classList.remove('show');
@@ -1044,11 +1097,13 @@ function saveApptForm(){
   const id=document.getElementById('f-id').value || newId();
   const existing=appointments.find(x=>x.id===id);
   const doctor=document.getElementById('f-doctor').value.trim();
-  const appt={
+  const appt=Object.assign({}, existing||{}, {
     id,
     billId:(existing&&existing.billId)||'',
     patient,
     phone:document.getElementById('f-phone').value.trim(),
+    age:(function(){ const v=parseInt(document.getElementById('f-age').value); return isNaN(v)?'':String(v); })(),
+    gender:document.getElementById('f-gender').value||'',
     date,
     time:document.getElementById('f-time').value||'',
     doctor,
@@ -1063,7 +1118,7 @@ function saveApptForm(){
     version:(existing&&typeof existing.version==='number'?existing.version:0)+1,
     updatedBy:'Niva Appointments app',
     deviceId:deviceId(),
-  };
+  });
   appt._unsynced=true; // cleared once the push to Firebase actually succeeds
   const idx=appointments.findIndex(x=>x.id===id);
   if(idx===-1) appointments.unshift(appt); else appointments[idx]=appt;
@@ -1223,7 +1278,7 @@ function apptCardHtml(a){
   const txSum = (a.txPayments&&a.txPayments.length) ? a.txPayments.reduce((t,p)=>t+(Number(p.amt)||0),0) : 0;
   return '<div class="appt-card '+cls+'"><div class="appt-row">'
     +'<div class="appt-main" onclick="openApptBox(\''+a.id+'\')">'
-      +'<div class="appt-name">'+escapeHtml(a.patient)+'<span class="chev">&#8250;</span></div>'
+      +'<div class="appt-name">'+escapeHtml(a.patient)+(ageSexLabel(a)?'<span class="ags">'+escapeHtml(ageSexLabel(a))+'</span>':'')+'<span class="chev">&#8250;</span></div>'
       +'<div class="appt-meta">'
         +(a.doctor?'<span>&#128100; '+escapeHtml(a.doctor)+'</span>':'')
         +(a.purpose?'<span>&#129681; '+escapeHtml(a.purpose)+'</span>':'')
@@ -1256,6 +1311,7 @@ function openApptBox(id){
   _g('box-title').textContent=a.patient||'';
   const det='<div class="box-det">'
     +'<span>&#128197; '+escapeHtml(fmtDate(a.date))+(a.time?' &middot; '+escapeHtml(fmtTime(a.time)):'')+'</span>'
+    +(ageSexLabel(a)?'<span>&#129489; '+escapeHtml(ageSexLabel(a))+'</span>':'')
     +(a.doctor?'<span>&#128100; '+escapeHtml(a.doctor)+'</span>':'')
     +(a.purpose?'<span>&#129681; '+escapeHtml(a.purpose)+'</span>':'')
     +(a.phone?'<span>&#128222; '+escapeHtml(a.phone)+'</span>':'')
@@ -1304,7 +1360,7 @@ function openOpd(id,kind){
   _g('opd-mode').value = a.opdMode || localStorage.getItem(OPD_MODE_KEY) || 'Cash';
   _g('opd-case').value = a.caseType || (isOldPatient(a.phone) ? 'Old' : 'New');
   _g('tx-amount').value=''; _g('tx-note').value=''; _g('tx-mode').value=localStorage.getItem(OPD_MODE_KEY)||'Cash';
-  _txSel=new Set(); _txAutoNote=''; _txLoadedFor=null; _txBills=[];
+  _txSel=new Set(); _txAutoNote=''; _txLoadedFor=null; _txBills=[]; _txAddTargetId=null;
   setOpdKind(kind||(a.opdPaid?'tx':'opd'));
   openModal('opd-modal');
   if(_opdKind==='opd') setTimeout(()=>{ const el=_g('opd-amount'); el.focus(); el.select(); },150);
@@ -1336,6 +1392,7 @@ function loadTxBills(a){
   if(!isConfigured()){ showEmpty('Connect to clinic data in Settings first.'); return; }
   fbGET('bills').then(all=>{
     if(_g('opd-id').value!==a.id || _opdKind!=='tx') return;
+    buildSvcCatalog(all);
     const d10=(a.phone||'').replace(/\D/g,'').slice(-10), nm=(a.patient||'').trim().toLowerCase();
     let withTreatment=0; const list=[];
     Object.keys(all||{}).forEach(k=>{
@@ -1349,11 +1406,12 @@ function loadTxBills(a){
       if(bal>0){ const al=allocPending(b,items,total,paid); list.push({b,items,total,paid,bal,pend:al.pend,paidNames:al.paidNames}); }
     });
     list.sort((x,y)=>String(y.b.date||'').localeCompare(String(x.b.date||''))||String(y.b.id).localeCompare(String(x.b.id)));
-    _txBills=list; _txLoadedFor=a.id;
+    _txBills=list; _txLoadedFor=a.id; renderTxAddTargets();
     if(!list.length){
       showEmpty(withTreatment
-        ? 'All treatment bills for this patient are <b>fully paid</b>. Add the new treatment to the bill in the main app first, then collect it here.'
-        : 'No treatment bill found for this patient in the main app. Create the treatment bill there first.');
+        ? 'All treatment bills for this patient are <b>fully paid</b>. Use <b>Add treatment</b> above to add the new treatment, then collect here.'
+        : 'No treatment bill for this patient yet. Use <b>Add treatment</b> above to create one.');
+      if(_g('tx-add-body').style.display==='none') toggleTxAdd(true);
       return;
     }
     L.style.display='none'; E.style.display='none'; M.style.display=''; S.disabled=false;
@@ -1382,11 +1440,13 @@ function curTxBill(){ return _txBills[parseInt(_g('tx-bill').value)||0]; }
 function renderTxBill(){
   const x=curTxBill(); if(!x) return;
   _txSel=new Set(); _txAutoNote=''; _g('tx-note').value='';
-  _g('tx-items').innerHTML=x.pend.map((p,i)=>
-    '<button type="button" class="tx-chip" id="txc-'+i+'" onclick="toggleTxItem('+i+')"><span>'+escapeHtml(txLabel(p.it))
+  _g('tx-items').innerHTML=x.pend.map((p,i)=>{
+    const canX=p.it&&p.it.by==='Appointments app'&&p.it.addedAt&&p.rem>=p.orig-0.005;
+    return '<div class="tx-chip-row"><button type="button" class="tx-chip" id="txc-'+i+'" onclick="toggleTxItem('+i+')"><span>'+escapeHtml(txLabel(p.it))
     +(p.rem<p.orig-0.005?'<small style="display:block;color:var(--ink-soft);font-weight:500;margin-left:18px">of '+inr(p.orig)+'</small>':'')
     +'</span><b>'+inr(p.rem)+'</b></button>'
-  ).join('')+(x.paidNames.length?'<div style="font-size:12px;color:var(--ink-soft);padding:2px 2px 0">Already paid: '+escapeHtml(x.paidNames.join(', '))+'</div>':'');
+    +(canX?'<button type="button" class="tx-x" title="Remove" onclick="removeTxItem('+p.it.addedAt+')">&#10005;</button>':'')+'</div>';
+  }).join('')+(x.paidNames.length?'<div style="font-size:12px;color:var(--ink-soft);padding:2px 2px 0">Already paid: '+escapeHtml(x.paidNames.join(', '))+'</div>':'');
   _g('tx-summary').innerHTML='<div><small>Bill total</small><strong>'+inr(x.total)+'</strong></div><div class="paid"><small>Paid</small><strong>'+inr(x.paid)+'</strong></div><div class="bal"><small>Balance</small><strong>'+inr(x.bal)+'</strong></div>';
   _g('tx-amount').value=x.bal;
   updateTxRemain();
@@ -1547,6 +1607,121 @@ function txReceipt(addedAt){
   const p=toArr(a.txPayments).find(z=>Number(z.addedAt)===Number(addedAt)); if(p) showReceipt(buildReceipt('tx',a,p));
 }
 
+/* ---- Add treatment (with charge) -> saved into the bill in Firebase, so the main app shows the same ---- */
+let _txAddBusy=false, _svcCatalog={}, _txAddTargetId=null;
+function toggleTxAdd(force){
+  const body=_g('tx-add-body'); const open=(typeof force==='boolean')?force:body.style.display==='none';
+  body.style.display=open?'':'none'; _g('tx-add-arrow').innerHTML=open?'&#9652;':'&#9662;';
+  if(open) setTimeout(()=>_g('tx-add-name').focus(),100);
+}
+function txQtyNum(q){ q=String(q||'1').trim()||'1'; return isNaN(q)? q.split(/[,\/\s]+/).filter(Boolean).length : (parseFloat(q)||1); }
+function txAddPreview(){
+  const r=parseFloat(_g('tx-add-rate').value)||0, q=(_g('tx-add-qty').value||'1').trim()||'1', n=txQtyNum(q);
+  _g('tx-add-preview').textContent = r>0 ? ('Amount: '+inr(Math.round(n*r))+(n!==1?'  ('+n+' \u00D7 '+inr(r)+')':'')) : '';
+}
+// Treatment names + last used charge, learned from the bills already in the main app
+function buildSvcCatalog(all){
+  const map={};
+  Object.keys(all||{}).forEach(k=>{
+    const b=all[k]; if(!b) return;
+    toArr(b.items).filter(Boolean).forEach(it=>{
+      const n=String(it.n||'').trim(); if(!n) return;
+      const key=n.toLowerCase(), d=String(it.d||b.date||'');
+      if(!map[key]) map[key]={name:n,rate:Number(it.r)||0,d,count:0};
+      map[key].count++;
+      if(d>=map[key].d && Number(it.r)>0){ map[key].rate=Number(it.r); map[key].d=d; }
+    });
+  });
+  _svcCatalog=map;
+  const list=Object.values(map).sort((x,y)=>y.count-x.count||x.name.localeCompare(y.name)).slice(0,120);
+  _g('tx-svc-list').innerHTML=list.map(x=>'<option value="'+escapeHtml(x.name)+'"></option>').join('');
+}
+function txSvcPick(){
+  const hit=_svcCatalog[String(_g('tx-add-name').value||'').trim().toLowerCase()];
+  if(hit && hit.rate && !(parseFloat(_g('tx-add-rate').value)>0)){ _g('tx-add-rate').value=hit.rate; }
+  txAddPreview();
+}
+function renderTxAddTargets(){
+  const sel=_g('tx-add-bill');
+  sel.innerHTML=_txBills.map((x,i)=>'<option value="'+i+'">'+escapeHtml(x.b.id)+' \u00B7 '+fmtD(x.b.date)+' \u00B7 Due '+inr(x.bal)+'</option>').join('')
+    +'<option value="new">New bill</option>';
+  // keep adding to the bill we last used; otherwise the latest pending bill; otherwise a new bill
+  const idx=_txBills.findIndex(x=>x.b.id===_txAddTargetId);
+  if(_txAddTargetId==='new') sel.value='new';
+  else if(idx>=0) sel.value=String(idx);
+  else sel.value=_txBills.length?'0':'new';
+}
+// totals of a bill after its treatments changed (keeps the main app's discount rules)
+function recalcBillTotals(b){
+  const items=toArr(b.items).filter(Boolean);
+  const sub=items.reduce((t,x)=>t+(Number(x.a)||0),0)+(Number(b.consult)||0);
+  let disc=Number(b.disc)||0;
+  if(b.discType==='pct') disc=Math.round(sub*(Number(b.discVal)||0)/100);
+  disc=Math.min(disc,sub);
+  b.sub=sub; b.disc=disc; b.total=sub-disc;
+  if(b.discType==='pct') b.discLabel=(Number(b.discVal)||0)+'% = \u20B9'+disc.toLocaleString('en-IN');
+  const paid=billPaidAmt(b);
+  b.balance=Math.max(0,b.total-paid);
+  b.status=b.balance>0?'Pending':'Paid';
+  if(b.status==='Pending') b.manualPaid=false;
+  b.updatedAt=Date.now(); b.version=(typeof b.version==='number'?b.version:0)+1; b.updatedBy='Niva Appointments app'; b.deviceId=deviceId();
+  return b;
+}
+function saveTxAdd(){
+  if(_txAddBusy) return;
+  const a=curOpdAppt(); if(!a) return;
+  const n=_g('tx-add-name').value.trim();
+  const q=(_g('tx-add-qty').value||'1').trim()||'1';
+  const r=parseFloat(_g('tx-add-rate').value)||0;
+  if(!n){ toast('Enter treatment name'); return; }
+  if(!(r>0)){ toast('Enter the charge'); return; }
+  if(!isConfigured()){ toast('Connect to clinic data in Settings first'); return; }
+  const qNum=txQtyNum(q), amt=Math.round(qNum*r), target=_g('tx-add-bill').value, btn=_g('tx-add-btn');
+  const item={d:todayStr(), n, q, qNum, r, a:amt, by:'Appointments app', addedAt:Date.now()};
+  _txAddBusy=true; btn.disabled=true; btn.textContent='Saving\u2026';
+  let p;
+  if(target!=='new' && _txBills[parseInt(target)]){
+    const key=fbSafeKey(_txBills[parseInt(target)].b.id);
+    p=fbGET('bills/'+key).then(b=>{
+      if(!b||!b.id) throw new Error('Bill not found in main app');
+      b.items=toArr(b.items).filter(Boolean); b.items.push(item);
+      recalcBillTotals(b);
+      return fbPUT('bills/'+key,b).then(()=>b.id);
+    });
+  } else {
+    p=nextBillId().then(id=>{
+      const now=Date.now();
+      const b={id, date:todayStr(), patient:a.patient||'', age:ageSexLabel(a), phone:a.phone||'', doctor:a.doctor||'', diag:'', additionalDetail:'',
+        consult:0, items:[item], sub:amt, disc:0, discLabel:'\u20B90', discType:'amt', discVal:0, total:amt,
+        payType:'Full', paidNow:0, balance:amt, dueDate:'', mode:'Cash', status:'Pending', manualPaid:false, upiTxn:'', payRef:'',
+        dentalChart:{}, appCreated:true, createdAt:now, updatedAt:now, version:1, updatedBy:'Niva Appointments app', deviceId:deviceId()};
+      return fbPUT('bills/'+fbSafeKey(id),b).then(()=>id);
+    });
+  }
+  p.then(billId=>{
+    _txAddTargetId=billId;
+    toast(n+' '+inr(amt)+' added \u00B7 '+billId);
+    _g('tx-add-name').value=''; _g('tx-add-rate').value=''; _g('tx-add-qty').value='1'; _g('tx-add-preview').textContent='';
+    _txLoadedFor=null; loadTxBills(a);
+  }).catch(err=>{ console.warn('[NivaAppt] add treatment failed:', err.message); toast(err.message&&err.message.indexOf('Bill')===0?err.message:'Could not save -- check internet and try again'); })
+  .then(()=>{ _txAddBusy=false; btn.disabled=false; btn.textContent='Add treatment'; });
+}
+// Remove a treatment that was added from this app (only while nothing has been paid against it)
+function removeTxItem(addedAt){
+  const x=curTxBill(); if(!x) return;
+  const it=x.items.find(z=>Number(z.addedAt)===Number(addedAt)); if(!it) return;
+  if(!confirm('Remove '+txLabel(it)+' ('+inr(it.a)+') from bill '+x.b.id+'?')) return;
+  const key=fbSafeKey(x.b.id), a=curOpdAppt();
+  fbGET('bills/'+key).then(b=>{
+    if(!b||!b.id) throw new Error('Bill not found in main app');
+    b.items=toArr(b.items).filter(Boolean).filter(z=>Number(z.addedAt)!==Number(addedAt));
+    if(!b.items.length && b.appCreated && !(Number(b.consult)>0) && billPaidAmt(b)<=0) return fbPUT('bills/'+key,null);
+    recalcBillTotals(b);
+    return fbPUT('bills/'+key,b);
+  }).then(()=>{ toast('Treatment removed'); _txLoadedFor=null; loadTxBills(a); })
+  .catch(err=>{ console.warn('[NivaAppt] remove treatment failed:', err.message); toast('Could not remove -- check internet and try again'); });
+}
+
 function fbShallowKeys(path){
   return fbSignIn().then(()=>{
     let u=fbUrl(path); u+=(u.indexOf('?')>-1?'&':'?')+'shallow=true';
@@ -1566,7 +1741,7 @@ function nextBillId(){
 function buildOpdBill(a, id, existing){
   const amt=a.opdAmount, now=Date.now();
   const b=Object.assign({}, existing||{}, {
-    id, date:(existing&&existing.date)||todayStr(), patient:a.patient||'', age:(existing&&existing.age)||'',
+    id, date:(existing&&existing.date)||todayStr(), patient:a.patient||'', age:ageSexLabel(a)||(existing&&existing.age)||'',
     phone:a.phone||'', doctor:a.doctor||'', diag:(existing&&existing.diag)||'',
     additionalDetail:(!existing||!existing.additionalDetail||/^OPD - (New|Old) Case$/.test(existing.additionalDetail))?('OPD - '+(a.caseType||'New')+' Case'):existing.additionalDetail,
     caseType:a.caseType||'New',
