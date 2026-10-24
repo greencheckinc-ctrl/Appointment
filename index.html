@@ -1294,8 +1294,6 @@ function apptCardHtml(a){
         +(a.purpose?'<span>&#129681; '+escapeHtml(a.purpose)+'</span>':'')
       +'</div>'
       +'<div class="appt-badges"><span class="status-tag '+sc+'">'+escapeHtml(a.status||'')+'</span>'
-        +(a.opdPaid?'<span class="pill">OPD &#8377;'+Number(a.opdAmount||0).toLocaleString('en-IN')+'</span>':'')
-        +(txSum?'<span class="pill">Treatment &#8377;'+txSum.toLocaleString('en-IN')+'</span>':'')
       +'</div>'
     +'</div>'
     +'<div class="appt-right"><div class="appt-time">'+(a.time?fmtTime(a.time):'')+'</div>'
