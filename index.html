@@ -1023,6 +1023,53 @@ function startPolling(){
   }, 20000);
 }
 
+/* ---------------- Walk-in patients ----------------
+   Patients billed in the main app today who have no appointment here (e.g. Today's Patients in the main app)
+   are added to Today as appointments (status Done = the patient came), so OPD / treatment can be collected. */
+const WALKIN_DISMISS_KEY='niva_appt_companion_walkin_dismissed';
+let _walkinBusy=false, _walkinLast=0;
+function loadWalkinDismissed(){ try{ return JSON.parse(localStorage.getItem(WALKIN_DISMISS_KEY)||'[]'); }catch(e){ return []; } }
+function last10(p){ return String(p||'').replace(/\D/g,'').slice(-10); }
+// one key per patient per day, so deleting a walk-in also hides that patient's other bills of the day
+function walkinPatientKey(patient,phone,date){ const p=last10(phone); return 'pk|'+date+'|'+(p.length===10?p:String(patient||'').trim().toLowerCase()); }
+function dismissWalkin(a){
+  const l=loadWalkinDismissed();
+  [a.id, walkinPatientKey(a.patient,a.phone,a.date)].forEach(k=>{ if(!l.includes(k)) l.push(k); });
+  try{ localStorage.setItem(WALKIN_DISMISS_KEY,JSON.stringify(l.slice(-300))); }catch(e){}
+}
+function makeWalkin(b,id){
+  const now=Date.now(), ct=b.createdAt?new Date(b.createdAt):new Date(), z=n=>String(n).padStart(2,'0');
+  const ag=String(b.age||''), am=ag.match(/(\d{1,3})/), gm=ag.match(/\/\s*([A-Za-z])/);
+  const items=(Array.isArray(b.items)?b.items:Object.values(b.items||{})).filter(Boolean).map(i=>i.n).filter(Boolean);
+  return {
+    id, billId:b.id, patient:b.patient, phone:b.phone||'', age:am?am[1]:'', gender:gm?genderFull(gm[1]):'',
+    date:todayStr(), time:z(ct.getHours())+':'+z(ct.getMinutes()), doctor:b.doctor||'',
+    purpose:String(b.diag||'').trim()||items.join(', ').slice(0,60), notes:'', location:CFG.clinicAddr||'', locationLink:CFG.clinicMapLink||'',
+    additionalDetail:'', status:'Done', walkIn:true,
+    createdAt:now, updatedAt:now, version:1, updatedBy:'Niva Appointments app', deviceId:deviceId(), _unsynced:true
+  };
+}
+function syncWalkins(force){
+  if(!isConfigured() || _walkinBusy) return;
+  if(!force && Date.now()-_walkinLast<60000) return;
+  _walkinBusy=true;
+  fbGET('bills').then(all=>{
+    _walkinLast=Date.now();
+    const td=todayStr(), dis=loadWalkinDismissed(); let added=0;
+    Object.values(all||{}).filter(b=>b&&b.id&&b.patient&&b.date===td).forEach(b=>{
+      const id='wi_'+fbSafeKey(b.id);
+      if(dis.includes(id) || dis.includes(walkinPatientKey(b.patient,b.phone,td))) return;
+      if(appointments.some(a=>a.id===id||a.billId===b.id)) return;
+      const p10=last10(b.phone), nm=String(b.patient).trim().toLowerCase();
+      if(appointments.some(a=>a.date===td && ((p10.length===10&&last10(a.phone)===p10)||String(a.patient||'').trim().toLowerCase()===nm))) return;
+      const w=makeWalkin(b,id); appointments.unshift(w); added++;
+      pushWithRetry(w);
+    });
+    if(added){ persistCache(); renderActiveView(); }
+  }).catch(err=>console.warn('[NivaAppt] walk-in sync failed:', err.message))
+  .then(()=>{ _walkinBusy=false; });
+}
+
 function pullAppointments(){
   if(!isConfigured()) return;
   setSyncPill('warn','Syncing...');
@@ -1030,6 +1077,7 @@ function pullAppointments(){
     mergeRemote(data||{});
     setSyncPill('ok','Live');
     renderActiveView();
+    syncWalkins();
   }).catch(err=>{
     setSyncPill('err','Sync error');
     console.warn('[NivaAppt] pull failed:', err.message);
@@ -1180,6 +1228,7 @@ function savePendingDeletes(ids){ try{ localStorage.setItem(PENDING_DEL_KEY, JSO
 
 function deleteAppt(id){
   if(!confirm('Delete this appointment?')) return;
+  { const w=appointments.find(x=>x.id===id); if(w && w.walkIn) dismissWalkin(w); }
   appointments=appointments.filter(x=>x.id!==id);
   persistCache(); renderActiveView();
   const pending=loadPendingDeletes();
