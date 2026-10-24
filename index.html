@@ -312,7 +312,7 @@ label{font-size:12px;font-weight:700;color:var(--ink-soft);display:block;margin-
 .appt-badges .pill{font-size:10.5px;font-weight:700;padding:3px 8px;border-radius:20px;background:var(--good-light);color:var(--good)}
 .box-det{display:flex;flex-direction:column;gap:6px;font-size:13.5px;color:var(--ink);margin-bottom:6px}
 .box-det span{display:flex;gap:8px;align-items:flex-start}
-.ags{font-weight:600;font-size:12px;color:var(--ink-soft);margin-left:6px;white-space:nowrap}
+.ags{font-weight:700;font-size:12.5px;color:var(--ink-soft);margin-left:2px;white-space:nowrap}
 .tx-chip-row{display:flex;gap:6px}
 .tx-chip-row .tx-chip{flex:1;min-width:0}
 .tx-x{width:42px;flex-shrink:0;border:1.5px solid var(--line);border-radius:11px;background:#fff;color:var(--bad);font-weight:800;font-size:15px;cursor:pointer;font-family:inherit}
@@ -1125,6 +1125,15 @@ function applyNewApptDefaults(){
 function genderShort(g){ g=String(g||'').trim(); if(!g) return ''; return /^m/i.test(g)?'M':(/^f/i.test(g)?'F':(/^o/i.test(g)?'O':g.charAt(0).toUpperCase())); }
 function genderFull(g){ g=String(g||'').trim(); if(!g) return ''; return /^m/i.test(g)?'Male':(/^f/i.test(g)?'Female':'Other'); }
 function ageSexLabel(a){ const age=parseInt(a&&a.age); return [isNaN(age)?'':age, genderShort(a&&a.gender)].filter(Boolean).join(' / '); }
+function ageSexOf(a){
+  let t=ageSexLabel(a); if(t) return t;
+  try{
+    const p10=String((a&&a.phone)||'').replace(/\D/g,'').slice(-10), nm=String((a&&a.patient)||'').trim().toLowerCase();
+    const p=(patients||[]).find(x=>x && ((p10.length===10 && String(x.phone||'').replace(/\D/g,'').slice(-10)===p10) || (nm && String(x.name||'').trim().toLowerCase()===nm)) && (x.age||x.gender));
+    if(p) t=ageSexLabel({age:p.age,gender:p.gender});
+  }catch(e){}
+  return t||'';
+}
 function openApptForm(existing){
   document.getElementById('appt-modal-title').textContent = existing ? 'Edit appointment' : 'New appointment';
   document.getElementById('f-id').value = existing ? existing.id : '';
@@ -1337,12 +1346,12 @@ function apptCardHtml(a){
   const txSum = (a.txPayments&&a.txPayments.length) ? a.txPayments.reduce((t,p)=>t+(Number(p.amt)||0),0) : 0;
   return '<div class="appt-card '+cls+'"><div class="appt-row">'
     +'<div class="appt-main" onclick="openApptBox(\''+a.id+'\')">'
-      +'<div class="appt-name">'+escapeHtml(a.patient)+(ageSexLabel(a)?'<span class="ags">'+escapeHtml(ageSexLabel(a))+'</span>':'')+'<span class="chev">&#8250;</span></div>'
+      +'<div class="appt-name">'+escapeHtml(a.patient)+'<span class="chev">&#8250;</span></div>'
       +'<div class="appt-meta">'
         +(a.doctor?'<span>&#128100; '+escapeHtml(a.doctor)+'</span>':'')
         +(a.purpose?'<span>&#129681; '+escapeHtml(a.purpose)+'</span>':'')
       +'</div>'
-      +'<div class="appt-badges"><span class="status-tag '+sc+'">'+escapeHtml(a.status||'')+'</span>'
+      +'<div class="appt-badges"><span class="status-tag '+sc+'">'+escapeHtml(a.status||'')+'</span>'+(ageSexOf(a)?'<span class="ags">'+escapeHtml(ageSexOf(a))+'</span>':'')
       +'</div>'
     +'</div>'
     +'<div class="appt-right"><div class="appt-time">'+(a.time?fmtTime(a.time):'')+'</div>'
@@ -1368,7 +1377,7 @@ function openApptBox(id){
   _g('box-title').textContent=a.patient||'';
   const det='<div class="box-det">'
     +'<span>&#128197; '+escapeHtml(fmtDate(a.date))+(a.time?' &middot; '+escapeHtml(fmtTime(a.time)):'')+'</span>'
-    +(ageSexLabel(a)?'<span>&#129489; '+escapeHtml(ageSexLabel(a))+'</span>':'')
+    +(ageSexOf(a)?'<span>&#129489; '+escapeHtml(ageSexOf(a))+'</span>':'')
     +(a.doctor?'<span>&#128100; '+escapeHtml(a.doctor)+'</span>':'')
     +(a.purpose?'<span>&#129681; '+escapeHtml(a.purpose)+'</span>':'')
     +(a.phone?'<span>&#128222; '+escapeHtml(a.phone)+'</span>':'')
