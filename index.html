@@ -320,6 +320,10 @@ label{font-size:12px;font-weight:700;color:var(--ink-soft);display:block;margin-
 .tx-add-head{display:flex;justify-content:space-between;align-items:center;font-weight:800;font-size:14px;color:var(--pri-dark);cursor:pointer}
 .tx-add-body{margin-top:12px}
 .tx-x.ed{color:var(--pri)}
+input.opd-in,select.opd-in,.field input.opd-in,.field select.opd-in{width:100%;box-sizing:border-box;height:50px;padding:0 14px;border:1.5px solid var(--line);border-radius:12px;font-size:16px;line-height:normal;font-family:inherit;background:#fff;color:var(--ink);-webkit-appearance:none;appearance:none}
+select.opd-in,.field select.opd-in{padding-right:34px;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1 1l5 5 5-5' fill='none' stroke='%23587' stroke-width='1.8' stroke-linecap='round'/></svg>");background-repeat:no-repeat;background-position:right 14px center}
+input.opd-in:focus,select.opd-in:focus{border-color:var(--pri)}
+.row2>.field{min-width:0}
 </style>
 </head>
 <body>
@@ -532,7 +536,7 @@ label{font-size:12px;font-weight:700;color:var(--ink-soft);display:block;margin-
                 <input class="opd-in" type="text" id="tx-add-qty" value="1" placeholder="16,17 or 1" oninput="txAddPreview()"/>
               </div>
               <div class="field">
-                <label>Charge (&#8377;) each</label>
+                <label>Amount (&#8377;) each</label>
                 <input class="opd-in" type="number" inputmode="numeric" min="0" id="tx-add-rate" placeholder="3500" oninput="txAddPreview()"/>
               </div>
             </div>
@@ -543,7 +547,7 @@ label{font-size:12px;font-weight:700;color:var(--ink-soft);display:block;margin-
             </div>
             <button type="button" class="btn pri" id="tx-add-btn" onclick="saveTxAdd()" style="width:100%">Add treatment</button>
             <button type="button" class="btn ghost" id="tx-edit-cancel" onclick="cancelTxEdit()" style="display:none;width:100%;margin-top:8px">Cancel edit</button>
-            <div style="font-size:11.5px;color:#888;margin-top:8px">Saved to the main app with its charge. You can add more treatments after this.</div>
+            <div style="font-size:11.5px;color:#888;margin-top:8px">Saved to the main app with its amount. You can add more treatments after this.</div>
           </div>
         </div>
         <div id="tx-loading" style="padding:18px 4px;color:var(--ink-soft);font-size:14px">Loading treatments from main app&hellip;</div>
@@ -1348,6 +1352,7 @@ function getOpdDefault(){ const v=parseInt(localStorage.getItem(OPD_DEFAULT_KEY)
 const _g=id=>document.getElementById(id);
 let _opdKind='opd', _txBills=[], _txLoadedFor=null, _txAutoNote='', _txSel=new Set(), _txBusy=false;
 function inr(n){ return '\u20B9'+(Number(n)||0).toLocaleString('en-IN'); }
+function fmtDS(s){ if(!s) return ''; const d=new Date(s+'T00:00:00'); return isNaN(d)?s:d.toLocaleDateString('en-IN',{day:'numeric',month:'short'}); }
 function fmtD(s){ if(!s) return ''; const d=new Date(s+'T00:00:00'); return isNaN(d)?s:d.toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'}); }
 function toArr(x){ return Array.isArray(x)?x:(x&&typeof x==='object'?Object.values(x):[]); }
 function billPaidAmt(b){ return (Number(b.paidNow)||0)+toArr(b.payHistory).reduce((t,p)=>t+(Number(p&&p.amt)||0),0); }
@@ -1418,7 +1423,7 @@ function loadTxBills(a){
       return;
     }
     L.style.display='none'; E.style.display='none'; M.style.display=''; S.disabled=false;
-    _g('tx-bill').innerHTML=list.map((x,i)=>'<option value="'+i+'">'+escapeHtml(x.b.id)+' \u00B7 '+fmtD(x.b.date)+' \u00B7 Due '+inr(x.bal)+'</option>').join('');
+    _g('tx-bill').innerHTML=list.map((x,i)=>'<option value="'+i+'">'+escapeHtml(x.b.id)+' \u00B7 '+fmtDS(x.b.date)+' \u00B7 Due '+inr(x.bal)+'</option>').join('');
     _g('tx-bill-wrap').style.display=list.length>1?'':'none';
     renderTxBill();
   }).catch(err=>{ console.warn('[NivaAppt] load bills failed:', err.message); showEmpty('Could not load bills from the main app. Check internet and reopen.'); });
@@ -1434,7 +1439,7 @@ function allocPending(b,items,total,paid){
   comps.forEach(c=>{ const take=Math.min(left,c.amt); c.rem=c.amt-take; c.paidTake=take; left-=take; });
   for(let k=comps.length-1;k>=0&&disc>0;k--){ const t=Math.min(disc,comps[k].rem); comps[k].rem-=t; disc-=t; }
   return {
-    pend:comps.filter(c=>c.rem>0.005).map(c=>({it:c.it,rem:c.rem,orig:c.amt,paidTake:c.paidTake||0})),
+    pend:comps.filter(c=>c.rem>0.005).map(c=>({it:c.it,rem:c.rem,orig:c.amt,paidTake:c.paidTake||0,isConsult:!!c.c})),
     paidNames:comps.filter(c=>!c.c&&c.rem<=0.005).map(c=>txLabel(c.it))
   };
 }
@@ -1444,11 +1449,12 @@ function renderTxBill(){
   const x=curTxBill(); if(!x) return;
   _txSel=new Set(); _txAutoNote=''; _g('tx-note').value='';
   _g('tx-items').innerHTML=x.pend.map((p,i)=>{
-    const canX=p.it&&p.it.by==='Appointments app'&&p.it.addedAt&&p.paidTake<=0.005;
+    const canE=p.it&&!p.isConsult, canX=canE&&p.paidTake<=0.005;
     return '<div class="tx-chip-row"><button type="button" class="tx-chip" id="txc-'+i+'" onclick="toggleTxItem('+i+')"><span>'+escapeHtml(txLabel(p.it))
     +(p.rem<p.orig-0.005?'<small style="display:block;color:var(--ink-soft);font-weight:500;margin-left:18px">of '+inr(p.orig)+'</small>':'')
     +'</span><b>'+inr(p.rem)+'</b></button>'
-    +(canX?'<button type="button" class="tx-x ed" title="Edit" onclick="editTxItem('+p.it.addedAt+')">&#9998;</button><button type="button" class="tx-x" title="Delete" onclick="removeTxItem('+p.it.addedAt+')">&#10005;</button>':'')+'</div>';
+    +(canE?'<button type="button" class="tx-x ed" title="Edit" onclick="editTxItem('+i+')">&#9998;</button>':'')
+    +(canX?'<button type="button" class="tx-x" title="Delete" onclick="removeTxItem('+i+')">&#10005;</button>':'')+'</div>';
   }).join('')+(x.paidNames.length?'<div style="font-size:12px;color:var(--ink-soft);padding:2px 2px 0">Already paid: '+escapeHtml(x.paidNames.join(', '))+'</div>':'');
   _g('tx-summary').innerHTML='<div><small>Bill total</small><strong>'+inr(x.total)+'</strong></div><div class="paid"><small>Paid</small><strong>'+inr(x.paid)+'</strong></div><div class="bal"><small>Balance</small><strong>'+inr(x.bal)+'</strong></div>';
   _g('tx-amount').value=x.bal;
@@ -1620,7 +1626,7 @@ function toggleTxAdd(force){
 function txQtyNum(q){ q=String(q||'1').trim()||'1'; return isNaN(q)? q.split(/[,\/\s]+/).filter(Boolean).length : (parseFloat(q)||1); }
 function txAddPreview(){
   const r=parseFloat(_g('tx-add-rate').value)||0, q=(_g('tx-add-qty').value||'1').trim()||'1', n=txQtyNum(q);
-  _g('tx-add-preview').textContent = r>0 ? ('Amount: '+inr(Math.round(n*r))+(n!==1?'  ('+n+' \u00D7 '+inr(r)+')':'')) : '';
+  _g('tx-add-preview').textContent = r>0 ? ('Total: '+inr(Math.round(n*r))+(n!==1?'  ('+n+' \u00D7 '+inr(r)+')':'')) : '';
 }
 // Treatment names + last used charge, learned from the bills already in the main app
 function buildSvcCatalog(all){
@@ -1646,7 +1652,7 @@ function txSvcPick(){
 }
 function renderTxAddTargets(){
   const sel=_g('tx-add-bill');
-  sel.innerHTML=_txBills.map((x,i)=>'<option value="'+i+'">'+escapeHtml(x.b.id)+' \u00B7 '+fmtD(x.b.date)+' \u00B7 Due '+inr(x.bal)+'</option>').join('')
+  sel.innerHTML=_txBills.map((x,i)=>'<option value="'+i+'">'+escapeHtml(x.b.id)+' \u00B7 '+fmtDS(x.b.date)+' \u00B7 Due '+inr(x.bal)+'</option>').join('')
     +'<option value="new">New bill</option>';
   // keep adding to the bill we last used; otherwise the latest pending bill; otherwise a new bill
   const idx=_txBills.findIndex(x=>x.b.id===_txAddTargetId);
@@ -1671,14 +1677,14 @@ function recalcBillTotals(b){
   return b;
 }
 function saveTxAdd(){
-  if(_txEditAddedAt!=null){ saveTxEdit(); return; }
+  if(_txEditKey!=null){ saveTxEdit(); return; }
   if(_txAddBusy) return;
   const a=curOpdAppt(); if(!a) return;
   const n=_g('tx-add-name').value.trim();
   const q=(_g('tx-add-qty').value||'1').trim()||'1';
   const r=parseFloat(_g('tx-add-rate').value)||0;
   if(!n){ toast('Enter treatment name'); return; }
-  if(!(r>0)){ toast('Enter the charge'); return; }
+  if(!(r>0)){ toast('Enter the amount'); return; }
   if(!isConfigured()){ toast('Connect to clinic data in Settings first'); return; }
   const qNum=txQtyNum(q), amt=Math.round(qNum*r), target=_g('tx-add-bill').value, btn=_g('tx-add-btn');
   const item={d:todayStr(), n, q, qNum, r, a:amt, by:'Appointments app', addedAt:Date.now()};
@@ -1711,67 +1717,80 @@ function saveTxAdd(){
   .then(()=>{ _txAddBusy=false; btn.disabled=false; btn.textContent='Add treatment'; });
 }
 // Remove a treatment that was added from this app (only while nothing has been paid against it)
-function removeTxItem(addedAt){
+function removeTxItem(i){
   const x=curTxBill(); if(!x) return;
-  const it=x.items.find(z=>Number(z.addedAt)===Number(addedAt)); if(!it) return;
-  if(!confirm('Remove '+txLabel(it)+' ('+inr(it.a)+') from bill '+x.b.id+'?')) return;
+  const p=x.pend[i]; if(!p||p.isConsult) return;
+  if(p.paidTake>0.005){ toast('Payment is already applied to this treatment'); return; }
+  const ik=itemKey(p.it), hint=x.items.indexOf(p.it);
+  if(!confirm('Delete '+txLabel(p.it)+' ('+inr(p.it.a)+') from bill '+x.b.id+'?')) return;
   const key=fbSafeKey(x.b.id), a=curOpdAppt();
   fbGET('bills/'+key).then(b=>{
     if(!b||!b.id) throw new Error('Bill not found in main app');
-    b.items=toArr(b.items).filter(Boolean).filter(z=>Number(z.addedAt)!==Number(addedAt));
+    b.items=toArr(b.items).filter(Boolean);
+    const ix=findItemIdx(b.items,ik,hint);
+    if(ix<0) throw new Error('Bill changed in main app -- reopen and try again');
+    b.items.splice(ix,1);
     if(!b.items.length && b.appCreated && !(Number(b.consult)>0) && billPaidAmt(b)<=0) return fbPUT('bills/'+key,null);
     recalcBillTotals(b);
+    if(b.total<billPaidAmt(b)-0.001) throw new Error('Bill total cannot be lower than the amount already paid ('+inr(billPaidAmt(b))+')');
     return fbPUT('bills/'+key,b);
-  }).then(()=>{ toast('Treatment removed'); _txLoadedFor=null; loadTxBills(a); })
-  .catch(err=>{ console.warn('[NivaAppt] remove treatment failed:', err.message); toast('Could not remove -- check internet and try again'); });
+  }).then(()=>{ toast('Treatment deleted'); _txLoadedFor=null; loadTxBills(a); })
+  .catch(err=>{ console.warn('[NivaAppt] delete treatment failed:', err.message); toast(err.message&&err.message.indexOf('Bill')===0?err.message:'Could not delete -- check internet and try again'); });
 }
 
 /* ---- Edit a treatment added from this app (only while no payment is applied to it) ---- */
-let _txEditAddedAt=null;
+
+// Treatments added in the main app have no id, so identify a line by its content (+ position as a hint)
+function itemKey(it){ return [it.n,it.q,it.r,it.a,it.d].map(v=>String(v==null?'':v)).join('|'); }
+function findItemIdx(items,key,hint){
+  if(hint>=0 && hint<items.length && itemKey(items[hint])===key) return hint;
+  return items.findIndex(z=>itemKey(z)===key);
+}
+let _txEditKey=null, _txEditHint=-1;
 function setTxEditMode(on){
   _g('tx-add-title').innerHTML = on ? '&#9998; Edit treatment' : '&#65291; Add treatment';
   _g('tx-add-btn').textContent = on ? 'Update treatment' : 'Add treatment';
   _g('tx-edit-cancel').style.display = on ? '' : 'none';
   _g('tx-add-bill-wrap').style.display = on ? 'none' : '';
 }
-function editTxItem(addedAt){
+function editTxItem(i){
   const x=curTxBill(); if(!x) return;
-  const it=x.items.find(z=>Number(z.addedAt)===Number(addedAt)); if(!it) return;
-  _txEditAddedAt=Number(addedAt);
-  _g('tx-add-name').value=it.n||''; _g('tx-add-qty').value=it.q||'1'; _g('tx-add-rate').value=it.r||'';
+  const p=x.pend[i]; if(!p||p.isConsult) return;
+  _txEditKey=itemKey(p.it); _txEditHint=x.items.indexOf(p.it);
+  _g('tx-add-name').value=p.it.n||''; _g('tx-add-qty').value=p.it.q||'1'; _g('tx-add-rate').value=p.it.r||'';
   setTxEditMode(true); txAddPreview(); toggleTxAdd(true);
   const box=_g('opd-sec-tx'); if(box&&box.scrollIntoView) box.scrollIntoView({block:'start'});
 }
 function cancelTxEdit(){
-  _txEditAddedAt=null; setTxEditMode(false);
+  _txEditKey=null; _txEditHint=-1; setTxEditMode(false);
   _g('tx-add-name').value=''; _g('tx-add-rate').value=''; _g('tx-add-qty').value='1'; _g('tx-add-preview').textContent='';
 }
 function saveTxEdit(){
   if(_txAddBusy) return;
-  const a=curOpdAppt(), x=curTxBill(); if(!a||!x||_txEditAddedAt==null) return;
+  const a=curOpdAppt(), x=curTxBill(); if(!a||!x||_txEditKey==null) return;
   const n=_g('tx-add-name').value.trim();
   const q=(_g('tx-add-qty').value||'1').trim()||'1';
   const r=parseFloat(_g('tx-add-rate').value)||0;
   if(!n){ toast('Enter treatment name'); return; }
-  if(!(r>0)){ toast('Enter the charge'); return; }
-  const qNum=txQtyNum(q), amt=Math.round(qNum*r), btn=_g('tx-add-btn'), key=fbSafeKey(x.b.id), at=_txEditAddedAt;
+  if(!(r>0)){ toast('Enter the amount'); return; }
+  const qNum=txQtyNum(q), amt=Math.round(qNum*r), btn=_g('tx-add-btn'), key=fbSafeKey(x.b.id), ik=_txEditKey, hint=_txEditHint;
   _txAddBusy=true; btn.disabled=true; btn.textContent='Saving\u2026';
   fbGET('bills/'+key).then(b=>{
     if(!b||!b.id) throw new Error('Bill not found in main app');
     b.items=toArr(b.items).filter(Boolean);
-    const it=b.items.find(z=>Number(z.addedAt)===at);
-    if(!it) throw new Error('Bill changed in main app -- reopen and try again');
-    const old=Object.assign({},it);
-    Object.assign(it,{n,q,qNum,r,a:amt,editedAt:Date.now()});
+    const ix=findItemIdx(b.items,ik,hint);
+    if(ix<0) throw new Error('Bill changed in main app -- reopen and try again');
+    const it=b.items[ix], old=Object.assign({},it);
+    Object.assign(it,{n,q,qNum,r,a:amt,editedAt:Date.now(),editedBy:'Appointments app'});
     const sub=b.items.reduce((t,z)=>t+(Number(z.a)||0),0)+(Number(b.consult)||0);
-    if(Math.max(0,sub-(Number(b.disc)||0))<billPaidAmt(b)-0.001){ Object.assign(it,old); throw new Error('Bill changed: charge is lower than the amount already paid'); }
+    if(Math.max(0,sub-(Number(b.disc)||0))<billPaidAmt(b)-0.001){ Object.assign(it,old); throw new Error('Bill total cannot be lower than the amount already paid ('+inr(billPaidAmt(b))+')'); }
     recalcBillTotals(b);
     return fbPUT('bills/'+key,b).then(()=>b.id);
   }).then(billId=>{
     toast(n+' updated \u00B7 '+inr(amt));
     _txAddTargetId=billId; cancelTxEdit(); _txLoadedFor=null; loadTxBills(a);
   }).catch(err=>{ console.warn('[NivaAppt] edit treatment failed:', err.message); toast(err.message&&(err.message.indexOf('Bill')===0)?err.message:'Could not save -- check internet and try again'); })
-  .then(()=>{ _txAddBusy=false; btn.disabled=false; btn.textContent=_txEditAddedAt!=null?'Update treatment':'Add treatment'; });
+  .then(()=>{ _txAddBusy=false; btn.disabled=false; btn.textContent=_txEditKey!=null?'Update treatment':'Add treatment'; });
 }
 
 function fbShallowKeys(path){
