@@ -324,6 +324,8 @@ input.opd-in,select.opd-in,.field input.opd-in,.field select.opd-in{width:100%;b
 select.opd-in,.field select.opd-in{padding-right:34px;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1 1l5 5 5-5' fill='none' stroke='%23587' stroke-width='1.8' stroke-linecap='round'/></svg>");background-repeat:no-repeat;background-position:right 14px center}
 input.opd-in:focus,select.opd-in:focus{border-color:var(--pri)}
 .row2>.field{min-width:0}
+.chip-btn .two{display:block;white-space:normal;text-align:center;line-height:1.25}
+.appt-actions .chip-btn{align-self:stretch}
 </style>
 </head>
 <body>
@@ -1329,8 +1331,8 @@ function openApptBox(id){
     +(a.status!=='No Show'?btn('bad','&#10005; Not show','setStatus('+ID+",'No Show')"):'')
     +(a.status!=='Cancelled'?btn('bad','Cancel','setStatus('+ID+",'Cancelled')"):'')
     +(a.status!=='Cancelled'?btn('pri','&#8377; Collect','openOpd('+ID+')'):'')
-    +(a.opdPaid?btn('good','OPD &#8377;'+Number(a.opdAmount||0).toLocaleString('en-IN')+' &#10003; &#9998;','openOpd('+ID+",'opd')"):'')
-    +(txSum?btn('good','Treatment &#8377;'+txSum.toLocaleString('en-IN')+' &#10003; &#9998;','openOpd('+ID+",'tx')"):'')
+    +(a.opdPaid?btn('good','<span class="two">OPD<br>&#8377;'+Number(a.opdAmount||0).toLocaleString('en-IN')+' &#10003; &#9998;</span>','openOpd('+ID+",'opd')"):'')
+    +(txSum?btn('good','<span class="two">Treatment<br>&#8377;'+txSum.toLocaleString('en-IN')+' &#10003; &#9998;</span>','openOpd('+ID+",'tx')"):'')
     +(a.phone?btn('pri','&#128241; WhatsApp','window.open(waLink(appointments.find(x=>x.id==='+ID+")),'_blank')"):'')
     +(a.phone?btn('pri','&#128172; SMS','window.location.href=smsLink(appointments.find(x=>x.id==='+ID+'))'):'')
     +btn('','Edit','editAppt('+ID+')')
