@@ -331,6 +331,7 @@ input.opd-in:focus,select.opd-in:focus{border-color:var(--pri)}
 .appt-actions .chip-btn{align-self:stretch}
 .appt-actions{grid-template-columns:repeat(3,minmax(0,1fr));grid-auto-rows:60px}
 .appt-actions .chip-btn{height:100%;min-height:0;padding:4px 6px;font-size:13px;line-height:1.25;box-sizing:border-box}
+.tx-x.off{opacity:.3;background:var(--paper)}
 </style>
 </head>
 <body>
@@ -1518,8 +1519,8 @@ function renderTxBill(){
     return '<div class="tx-chip-row"><button type="button" class="tx-chip" id="txc-'+i+'" onclick="toggleTxItem('+i+')"><span>'+escapeHtml(txLabel(p.it))
     +(p.rem<p.orig-0.005?'<small style="display:block;color:var(--ink-soft);font-weight:500;font-size:12.5px;margin-top:2px">of '+inr(p.orig)+'</small>':'')
     +'</span><b>'+inr(p.rem)+'</b></button>'
-    +(canE?'<button type="button" class="tx-x ed" title="Edit" onclick="editTxItem('+i+')">&#9998;</button>':'<span class="tx-x tx-slot"></span>')
-    +(canX?'<button type="button" class="tx-x" title="Delete" onclick="removeTxItem('+i+')">&#10005;</button>':'<span class="tx-x tx-slot"></span>')+'</div>';
+    +(canE?'<button type="button" class="tx-x ed" title="Edit" onclick="editTxItem('+i+')">&#9998;</button>':'<button type="button" class="tx-x ed off" title="Cannot edit" onclick="toast(\'This line cannot be edited here\')">&#9998;</button>')
+    +(canX?'<button type="button" class="tx-x" title="Delete" onclick="removeTxItem('+i+')">&#10005;</button>':'<button type="button" class="tx-x off" title="Cannot delete" onclick="toast(\''+(p.isConsult?'Consultation cannot be deleted here':'Payment is already applied to this treatment')+'\')">&#10005;</button>')+'</div>';
   }).join('')+(x.paidNames.length?'<div style="font-size:12px;color:var(--ink-soft);padding:2px 2px 0">Already paid: '+escapeHtml(x.paidNames.join(', '))+'</div>':'');
   _g('tx-summary').innerHTML='<div><small>Bill total</small><strong>'+inr(x.total)+'</strong></div><div class="paid"><small>Paid</small><strong>'+inr(x.paid)+'</strong></div><div class="bal"><small>Balance</small><strong>'+inr(x.bal)+'</strong></div>';
   _g('tx-amount').value=x.bal;
