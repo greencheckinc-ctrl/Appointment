@@ -315,9 +315,10 @@ label{font-size:12px;font-weight:700;color:var(--ink-soft);display:block;margin-
 .box-det{display:flex;flex-direction:column;gap:6px;font-size:13.5px;color:var(--ink);margin-bottom:6px}
 .box-det span{display:flex;gap:8px;align-items:flex-start}
 .ags{font-weight:700;font-size:12.5px;color:var(--ink-soft);margin-left:2px;white-space:nowrap}
-.tx-chip-row{display:flex;gap:6px}
-.tx-chip-row .tx-chip{flex:1;min-width:0}
-.tx-x{width:42px;flex-shrink:0;border:1.5px solid var(--line);border-radius:11px;background:#fff;color:var(--bad);font-weight:800;font-size:15px;cursor:pointer;font-family:inherit}
+.tx-chip-row{display:grid;grid-template-columns:minmax(0,1fr) 44px 44px;gap:6px;align-items:stretch}
+.tx-chip-row .tx-chip{min-width:0;width:100%;text-align:left}
+.tx-chip-row .tx-slot{visibility:hidden}
+.tx-x{width:100%;flex-shrink:0;border:1.5px solid var(--line);border-radius:11px;background:#fff;color:var(--bad);font-weight:800;font-size:15px;cursor:pointer;font-family:inherit}
 .tx-add{background:var(--paper);border:1.5px dashed var(--line);border-radius:14px;padding:12px;margin-bottom:14px}
 .tx-add-head{display:flex;justify-content:space-between;align-items:center;font-weight:800;font-size:14px;color:var(--pri-dark);cursor:pointer}
 .tx-add-body{margin-top:12px}
@@ -1515,10 +1516,10 @@ function renderTxBill(){
   _g('tx-items').innerHTML=x.pend.map((p,i)=>{
     const canE=p.it&&!p.isConsult, canX=canE&&p.paidTake<=0.005;
     return '<div class="tx-chip-row"><button type="button" class="tx-chip" id="txc-'+i+'" onclick="toggleTxItem('+i+')"><span>'+escapeHtml(txLabel(p.it))
-    +(p.rem<p.orig-0.005?'<small style="display:block;color:var(--ink-soft);font-weight:500;margin-left:18px">of '+inr(p.orig)+'</small>':'')
+    +(p.rem<p.orig-0.005?'<small style="display:block;color:var(--ink-soft);font-weight:500;font-size:12.5px;margin-top:2px">of '+inr(p.orig)+'</small>':'')
     +'</span><b>'+inr(p.rem)+'</b></button>'
-    +(canE?'<button type="button" class="tx-x ed" title="Edit" onclick="editTxItem('+i+')">&#9998;</button>':'')
-    +(canX?'<button type="button" class="tx-x" title="Delete" onclick="removeTxItem('+i+')">&#10005;</button>':'')+'</div>';
+    +(canE?'<button type="button" class="tx-x ed" title="Edit" onclick="editTxItem('+i+')">&#9998;</button>':'<span class="tx-x tx-slot"></span>')
+    +(canX?'<button type="button" class="tx-x" title="Delete" onclick="removeTxItem('+i+')">&#10005;</button>':'<span class="tx-x tx-slot"></span>')+'</div>';
   }).join('')+(x.paidNames.length?'<div style="font-size:12px;color:var(--ink-soft);padding:2px 2px 0">Already paid: '+escapeHtml(x.paidNames.join(', '))+'</div>':'');
   _g('tx-summary').innerHTML='<div><small>Bill total</small><strong>'+inr(x.total)+'</strong></div><div class="paid"><small>Paid</small><strong>'+inr(x.paid)+'</strong></div><div class="bal"><small>Balance</small><strong>'+inr(x.bal)+'</strong></div>';
   _g('tx-amount').value=x.bal;
