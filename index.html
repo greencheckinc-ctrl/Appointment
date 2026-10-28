@@ -1562,9 +1562,9 @@ function saveTx(){
     const totalPaid=paid+amt;
     b.paid=totalPaid; b.balance=Math.max(0,(Number(b.total)||0)-totalPaid); b.status=b.balance<=0?'Paid':'Pending';
     b.updatedAt=Date.now(); b.version=(typeof b.version==='number'?b.version:0)+1; b.updatedBy='Niva Appointments app'; b.deviceId=deviceId();
-    return fbPUT('bills/'+key,b).then(()=>({addedAt,balance:b.balance,payNo:ph.length,billTotal:Number(b.total)||0,paidAfter:totalPaid}));
+    return fbPUT('bills/'+key,b).then(()=>({addedAt,balance:b.balance,payNo:ph.length,billTotal:Number(b.total)||0,paidAfter:totalPaid,brk:billBreakdown(b)}));
   }).then(r=>{
-    const entry={billId:x.b.id,amt,mode,date:todayStr(),note,addedAt:r.addedAt,payNo:r.payNo,billTotal:r.billTotal,paidAfter:r.paidAfter,balAfter:r.balance};
+    const entry={billId:x.b.id,amt,mode,date:todayStr(),note,addedAt:r.addedAt,payNo:r.payNo,billTotal:r.billTotal,paidAfter:r.paidAfter,balAfter:r.balance,brk:r.brk};
     a.txPayments=toArr(a.txPayments); a.txPayments.push(entry);
     touchAppt(a); persistCache(); pushWithRetry(a);
     closeModal('opd-modal'); renderActiveView();
@@ -1606,11 +1606,20 @@ function undoTxPayment(addedAt){
 
 /* ---------------- Receipts (Print / WhatsApp) ---------------- */
 let _rcpt=null;
+
+// Splits a bill into OPD (consultation) + treatments (+ discount) so a receipt can show how the total is made up
+function billBreakdown(b){
+  const items=toArr(b.items).filter(Boolean).map(i=>({n:i.n||'Treatment',q:i.q,a:Number(i.a)||0}));
+  const consult=Number(b.consult)||0, treat=items.reduce((t,i)=>t+i.a,0);
+  const disc=Math.max(0,Math.round(consult+treat-(Number(b.total)||0)));
+  return {consult,treat,items,disc};
+}
 function buildReceipt(kind,a,p){
   if(kind==='tx'){
     return {kind, billNo:p.billId||'', payNo:p.payNo||'', date:p.date||todayStr(), patient:a.patient||'', phone:a.phone||'', doctor:a.doctor||'',
       desc:p.note||'Treatment payment', amount:Number(p.amt)||0, mode:p.mode||'',
-      total:p.billTotal, paidTotal:p.paidAfter, balance:p.balAfter};
+      total:p.billTotal, paidTotal:p.paidAfter, balance:p.balAfter, brk:p.brk||null,
+      opdSep:(!(p.brk&&p.brk.consult>0)&&a.opdPaid)?{amt:Number(a.opdAmount)||0,billNo:a.opdBillId||''}:null};
   }
   return {kind:'opd', billNo:a.opdBillId||'', payNo:'', date:a.opdDate||todayStr(), patient:a.patient||'', phone:a.phone||'', doctor:a.doctor||'',
     desc:'OPD Consultation ('+(a.caseType||'New')+' Case)', amount:Number(a.opdAmount)||0, mode:a.opdMode||'', total:undefined, paidTotal:undefined, balance:undefined};
@@ -1631,7 +1640,24 @@ function receiptCardHtml(r){
    +'</table>'
    +'<div style="margin:12px 0 4px;padding:10px 12px;background:#f3f7f7;border-radius:10px;font-size:13.5px"><div style="color:#6b7b7f;font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px">For</div>'+escapeHtml(r.desc)+'</div>'
    +'<div style="display:flex;justify-content:space-between;align-items:center;margin:10px 0;padding:12px;background:#e5f4ec;border-radius:10px"><div><div style="font-size:11.5px;color:#2f8f5b;font-weight:700;text-transform:uppercase">Amount Paid</div><div style="font-size:12px;color:#4b5c60">'+escapeHtml(r.mode)+'</div></div><div style="font-size:24px;font-weight:800;color:#1b6e35">'+inr(r.amount)+'</div></div>'
-   +(hasTot?'<table style="width:100%;border-collapse:collapse;font-size:13.5px;border-top:1px solid #e6eded"><tr><td style="padding:5px 0;color:#6b7b7f">Bill Total</td><td style="text-align:right;font-weight:600">'+inr(r.total)+'</td></tr><tr><td style="padding:5px 0;color:#6b7b7f">Total Paid</td><td style="text-align:right;font-weight:600">'+inr(r.paidTotal)+'</td></tr><tr><td style="padding:5px 0;font-weight:700">Balance</td><td style="text-align:right;font-weight:800;color:'+(r.balance>0?'#c1432e':'#1b6e35')+'">'+(r.balance>0?inr(r.balance):'Fully Paid')+'</td></tr></table>':'')
+   +(hasTot?(function(){
+      const td1='padding:4px 0;color:#6b7b7f', td2='text-align:right;font-weight:600;padding:4px 0';
+      let h='<table style="width:100%;border-collapse:collapse;font-size:13.5px;border-top:1px solid #e6eded">';
+      const k=r.brk;
+      if(k){
+        if(k.consult>0) h+='<tr><td style="'+td1+'">OPD / Consultation</td><td style="'+td2+'">'+inr(k.consult)+'</td></tr>';
+        if(k.items.length){
+          h+='<tr><td style="'+td1+'">Treatment</td><td style="'+td2+'">'+inr(k.treat)+'</td></tr>';
+          k.items.forEach(i=>{ const q=(i.q!=null&&String(i.q).trim()!==''&&String(i.q).trim()!=='1')?' ('+String(i.q).trim().replace(/,$/,'')+')':''; h+='<tr><td style="padding:1px 0 1px 12px;font-size:12px;color:#8a999c">\u2022 '+escapeHtml(i.n)+escapeHtml(q)+'</td><td style="text-align:right;font-size:12px;color:#8a999c;padding:1px 0">'+inr(i.a)+'</td></tr>'; });
+        }
+        if(k.disc>0) h+='<tr><td style="'+td1+'">Discount</td><td style="'+td2+';color:#c1432e">\u2212 '+inr(k.disc)+'</td></tr>';
+      }
+      h+='<tr><td style="padding:6px 0 4px;font-weight:700;'+(k?'border-top:1px solid #e6eded':'')+'">Bill Total</td><td style="text-align:right;font-weight:800;padding:6px 0 4px;'+(k?'border-top:1px solid #e6eded':'')+'">'+inr(r.total)+'</td></tr>'
+        +'<tr><td style="'+td1+'">Total Paid</td><td style="'+td2+'">'+inr(r.paidTotal)+'</td></tr>'
+        +'<tr><td style="padding:5px 0;font-weight:700">Balance</td><td style="text-align:right;font-weight:800;color:'+(r.balance>0?'#c1432e':'#1b6e35')+'">'+(r.balance>0?inr(r.balance):'Fully Paid')+'</td></tr></table>';
+      if(r.opdSep&&r.opdSep.amt>0) h+='<div style="font-size:12px;color:#6b7b7f;margin-top:6px">OPD '+inr(r.opdSep.amt)+' paid separately'+(r.opdSep.billNo?' (Bill '+escapeHtml(r.opdSep.billNo)+')':'')+'</div>';
+      return h;
+    })():'')
    +'<div style="text-align:center;font-size:12px;color:#6b7b7f;margin-top:12px">Thank you for choosing '+escapeHtml(CFG.clinicName||'us')+'</div></div>';
 }
 function showReceipt(r){ _rcpt=r; _g('rcpt-preview').innerHTML=receiptCardHtml(r); openModal('rcpt-modal'); }
@@ -1663,9 +1689,18 @@ function receiptWAText(r){
   L.push('\uD83D\uDCB0 *Amount Paid: '+inr(r.amount)+'*'+(r.mode?'  ('+r.mode+')':''));
   if(r.total!=null && r.paidTotal!=null && r.balance!=null){
     L.push(LINE);
+    if(r.brk){
+      if(r.brk.consult>0) L.push(kv('OPD',inr(r.brk.consult)));
+      if(r.brk.items.length){
+        L.push(kv('Treatment',inr(r.brk.treat)));
+        r.brk.items.forEach(i=>{ const q=(i.q!=null&&String(i.q).trim()!==''&&String(i.q).trim()!=='1')?' ('+String(i.q).trim().replace(/,$/,'')+')':''; L.push('   \u2022 '+i.n+q+': '+inr(i.a)); });
+      }
+      if(r.brk.disc>0) L.push(kv('Discount','- '+inr(r.brk.disc)));
+    }
     L.push(kv('Bill Total',inr(r.total)));
     L.push(kv('Total Paid',inr(r.paidTotal)));
     L.push(r.balance>0 ? '\u26A0\uFE0F *Balance Due: '+inr(r.balance)+'*' : '\u2705 *Fully Paid*');
+    if(r.opdSep&&r.opdSep.amt>0) L.push('_OPD '+inr(r.opdSep.amt)+' paid separately'+(r.opdSep.billNo?' (Bill '+r.opdSep.billNo+')':'')+'_');
   }
   L.push(LINE);
   L.push('_Thank you for choosing '+(CFG.clinicName||'us')+'_ \uD83D\uDE4F');
@@ -1679,7 +1714,11 @@ function whatsappReceipt(){
 function reopenOpdReceipt(){ const a=curOpdAppt(); if(a&&a.opdPaid) showReceipt(buildReceipt('opd',a)); }
 function txReceipt(addedAt){
   const a=curOpdAppt(); if(!a) return;
-  const p=toArr(a.txPayments).find(z=>Number(z.addedAt)===Number(addedAt)); if(p) showReceipt(buildReceipt('tx',a,p));
+  const p=toArr(a.txPayments).find(z=>Number(z.addedAt)===Number(addedAt)); if(!p) return;
+  if(p.brk || !isConfigured() || !p.billId){ showReceipt(buildReceipt('tx',a,p)); return; }
+  fbGET('bills/'+fbSafeKey(p.billId)).then(b=>{
+    if(b&&b.id){ p.brk=billBreakdown(b); if(p.billTotal==null) p.billTotal=Number(b.total)||0; touchAppt(a); persistCache(); pushWithRetry(a); }
+  }).catch(()=>{}).then(()=>showReceipt(buildReceipt('tx',a,p)));
 }
 
 /* ---- Add treatment (with charge) -> saved into the bill in Firebase, so the main app shows the same ---- */
