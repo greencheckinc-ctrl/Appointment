@@ -897,8 +897,10 @@ function selectPatientSuggestion(id){
   const p=patients.find(x=>x.id===id); if(!p) return;
   document.getElementById('f-patient').value=p.name||'';
   document.getElementById('f-phone').value=p.phone||'';
-  if(!document.getElementById('f-age').value){ const ag=parseInt(p.age); if(!isNaN(ag)) document.getElementById('f-age').value=ag; }
-  if(!document.getElementById('f-gender').value) document.getElementById('f-gender').value=genderFull(p.gender);
+  { const ps=parseAgeSex(p.age);
+    if(!document.getElementById('f-age').value){ const ag=parseInt(p.age)||ps.age; if(ag) document.getElementById('f-age').value=ag; }
+    if(!document.getElementById('f-gender').value) document.getElementById('f-gender').value=genderFull(p.gender)||ps.gender; }
+  autofillAgeSex();
   document.getElementById('patient-suggest').classList.remove('show');
   document.getElementById('phone-suggest').classList.remove('show');
 }
@@ -1060,7 +1062,7 @@ function syncWalkins(force){
   if(!force && Date.now()-_walkinLast<60000) return;
   _walkinBusy=true;
   fbGET('bills').then(all=>{
-    _walkinLast=Date.now();
+    _walkinLast=Date.now(); ingestBillAgeSex(all);
     const td=todayStr(), dis=loadWalkinDismissed(); let added=0;
     Object.values(all||{}).filter(b=>b&&b.id&&b.patient&&b.date===td).forEach(b=>{
       const id='wi_'+fbSafeKey(b.id);
@@ -1131,14 +1133,58 @@ function applyNewApptDefaults(){
 function genderShort(g){ g=String(g||'').trim(); if(!g) return ''; return /^m/i.test(g)?'M':(/^f/i.test(g)?'F':(/^o/i.test(g)?'O':g.charAt(0).toUpperCase())); }
 function genderFull(g){ g=String(g||'').trim(); if(!g) return ''; return /^m/i.test(g)?'Male':(/^f/i.test(g)?'Female':'Other'); }
 function ageSexLabel(a){ const age=parseInt(a&&a.age); return [isNaN(age)?'':age, genderShort(a&&a.gender)].filter(Boolean).join(' / '); }
+
+/* ---- Age / Sex lookup: appointments -> patient file -> bills in the main app ---- */
+const BILLAS_KEY='niva_appt_companion_billas';
+let _billAS={}; try{ _billAS=JSON.parse(localStorage.getItem(BILLAS_KEY)||'{}'); }catch(e){}
+// "58 / M", "58/F", "58 Male", "58M" -> {age:'58', gender:'Male'}
+function parseAgeSex(str){
+  str=String(str==null?'':str).trim();
+  const am=str.match(/(\d{1,3})/);
+  let g='';
+  if(/female/i.test(str)) g='Female'; else if(/male/i.test(str)) g='Male'; else if(/other/i.test(str)) g='Other';
+  else { const m=str.match(/\/\s*([MFO])\b/i)||str.match(/\d\s*([MFO])\s*$/i)||str.match(/^\s*([MFO])\s*$/i); if(m) g=genderFull(m[1]); }
+  return {age:am?am[1]:'',gender:g};
+}
+// remember age/sex written on bills (the main app keeps it as "58 / M" in the bill's Age / Gender box)
+function ingestBillAgeSex(all){
+  try{
+    const best={}, p10=v=>String(v||'').replace(/\D/g,'').slice(-10);
+    Object.values(all||{}).forEach(b=>{
+      if(!b||!b.age||!b.patient) return;
+      const ps=parseAgeSex(b.age); if(!ps.age&&!ps.gender) return;
+      const keys=['n:'+String(b.patient).trim().toLowerCase()]; if(p10(b.phone).length===10) keys.push('p:'+p10(b.phone));
+      const d=String(b.date||'');
+      keys.forEach(k=>{ if(!best[k]||d>=best[k].d) best[k]={age:ps.age,gender:ps.gender,d}; });
+    });
+    if(Object.keys(best).length){ _billAS=best; localStorage.setItem(BILLAS_KEY,JSON.stringify(best)); }
+  }catch(e){}
+}
+function lookupAgeSex(name,phone){
+  const p10=String(phone||'').replace(/\D/g,'').slice(-10), nm=String(name||'').trim().toLowerCase();
+  let age='', gender='';
+  const take=(a,g)=>{ if(!age && a) age=String(a); if(!gender && g) gender=genderFull(g); };
+  const same=(n,p)=>{ const q=String(p||'').replace(/\D/g,'').slice(-10); return (p10.length===10&&q===p10) || (nm&&String(n||'').trim().toLowerCase()===nm); };
+  try{
+    (appointments||[]).filter(x=>x&&(x.age||x.gender)&&same(x.patient,x.phone)).sort((x,y)=>(y.updatedAt||0)-(x.updatedAt||0)).forEach(x=>take(parseInt(x.age)||'',x.gender));
+    const pf=(patients||[]).find(x=>x&&same(x.name,x.phone)&&(x.age||x.gender));
+    if(pf){ const ps=parseAgeSex(pf.age); take(parseInt(pf.age)||ps.age, pf.gender||ps.gender); }
+    const bk=_billAS['p:'+p10]||_billAS['n:'+nm]; if(bk) take(bk.age,bk.gender);
+  }catch(e){}
+  return {age,gender};
+}
+// fill Age / Sex on the appointment form when they are still empty
+function autofillAgeSex(){
+  const ageEl=document.getElementById('f-age'), gEl=document.getElementById('f-gender'); if(!ageEl||!gEl) return;
+  if(ageEl.value && gEl.value) return;
+  const r=lookupAgeSex(document.getElementById('f-patient').value, document.getElementById('f-phone').value);
+  if(!ageEl.value && r.age) ageEl.value=r.age;
+  if(!gEl.value && r.gender) gEl.value=r.gender;
+}
 function ageSexOf(a){
   let t=ageSexLabel(a); if(t) return t;
-  try{
-    const p10=String((a&&a.phone)||'').replace(/\D/g,'').slice(-10), nm=String((a&&a.patient)||'').trim().toLowerCase();
-    const p=(patients||[]).find(x=>x && ((p10.length===10 && String(x.phone||'').replace(/\D/g,'').slice(-10)===p10) || (nm && String(x.name||'').trim().toLowerCase()===nm)) && (x.age||x.gender));
-    if(p) t=ageSexLabel({age:p.age,gender:p.gender});
-  }catch(e){}
-  return t||'';
+  const r=lookupAgeSex(a&&a.patient, a&&a.phone);
+  return ageSexLabel({age:r.age,gender:r.gender});
 }
 function openApptForm(existing){
   document.getElementById('appt-modal-title').textContent = existing ? 'Edit appointment' : 'New appointment';
@@ -1154,6 +1200,8 @@ function openApptForm(existing){
   document.getElementById('f-notes').value = existing ? existing.notes||'' : '';
   document.getElementById('f-age').value = existing ? (parseInt(existing.age)||'') : '';
   document.getElementById('f-gender').value = existing ? genderFull(existing.gender) : '';
+  ['f-patient','f-phone'].forEach(id=>{ const el=document.getElementById(id); if(el && !el._asBound){ el.addEventListener('change',autofillAgeSex); el.addEventListener('blur',autofillAgeSex); el._asBound=true; } });
+  if(existing) autofillAgeSex();
   refreshDoctorList();
   applyNewApptDefaults();
   document.getElementById('patient-suggest').classList.remove('show');
@@ -1466,7 +1514,7 @@ function loadTxBills(a){
   if(!isConfigured()){ showEmpty('Connect to clinic data in Settings first.'); return; }
   fbGET('bills').then(all=>{
     if(_g('opd-id').value!==a.id || _opdKind!=='tx') return;
-    buildSvcCatalog(all);
+    buildSvcCatalog(all); ingestBillAgeSex(all);
     const d10=(a.phone||'').replace(/\D/g,'').slice(-10), nm=(a.patient||'').trim().toLowerCase();
     let withTreatment=0; const list=[];
     Object.keys(all||{}).forEach(k=>{
